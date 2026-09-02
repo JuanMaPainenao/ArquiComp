@@ -21,36 +21,42 @@
 
 
 module top_ALU #(
-    parameter NB_DATA = 8,
+    parameter NB_DATA = 8
 )
 (
-    input [NB_DATA-1: 0]switch;
-    input [0:0] clock_a;
-    input [0:0] clock_b;
-    input [0:0] clock_op;
-    output reg [0:0] reg_res;
+    input [NB_DATA-1: 0]switch,
+    input [0:0] clock,
+    input en_a,
+    input en_b,
+    input en_op,
+    output [NB_DATA-1:0] reg_res
     );
     
     reg [NB_DATA-1:0]reg_a;
     reg [NB_DATA-1:0]reg_b;
     reg [6-1:0]reg_op;
+
+    
     Alu mi_alu(
-        .a (reg_a),
-        .b (reg_b),
-        .alu_op (OP),
-        .result ()
+        .A (reg_a),
+        .B (reg_b),
+        .OP (reg_op),
+        .RES (reg_res)
     );
     
-    always @(posedge clock_a)begin
-        reg_a = switch;
+    always @(posedge clock)begin
+        if (en_a)
+            reg_a <= switch;
     end
     
-    always @(posedge clock_b)begin
-        reg_b = switch;
+    always @(posedge clock)begin
+        if (en_b)
+            reg_b <= switch;
     end
     
-    always @(posedge clock_op)begin
-        reg_op = switch;
+    always @(posedge clock)begin
+        if (en_op)
+            reg_op <= switch;
     end
     
     
