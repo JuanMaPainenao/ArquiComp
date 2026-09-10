@@ -41,9 +41,6 @@ module Alu #(
     localparam OP_SRL = 6'b000010;
     localparam OP_NOR = 6'b100111;
     
-    
-    
-    
     always @(*)begin
         case (OP)
             OP_ADD: RES = A+B;
@@ -54,6 +51,7 @@ module Alu #(
             OP_SRL: RES = A>>B;
             OP_SRA: RES = $signed(A) >>> B;
             OP_NOR: RES = ~(A|B);
+            default: RES = 8'b0;
          endcase
     end
 
