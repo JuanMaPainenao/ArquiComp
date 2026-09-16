@@ -27,6 +27,7 @@ module rx_uart#(
 (
         input i_clk_br,
         input i_rx,
+        input i_reset,
         output reg [NB_DATA-1:0] o_dout,
         output reg o_rx_done
 
@@ -45,11 +46,20 @@ module rx_uart#(
     reg rx_done_tick;
     
     always @(posedge i_clk_br) begin
-        state_rx <= next_state_rx;
-        cont_ticks <= next_cont_ticks;
-        cont_bits <= next_cont_bits;
-        shift_reg <= next_shift_reg;
-        o_rx_done <= rx_done_tick;
+        if (i_reset) begin
+            state_rx <= idle;
+            cont_ticks <= 4'b0;
+            cont_bits <= 3'b0;
+            shift_reg <= {NB_DATA{1'b0}};
+            o_rx_done <= 1'b0;
+        end
+        else begin
+            state_rx <= next_state_rx;
+            cont_ticks <= next_cont_ticks;
+            cont_bits <= next_cont_bits;
+            shift_reg <= next_shift_reg;
+            o_rx_done <= rx_done_tick;
+        end
     end
 
     always @(posedge i_clk_br) begin
@@ -68,6 +78,7 @@ module rx_uart#(
             idle:begin
                 if (i_rx == 0)begin
                     next_state_rx = start;
+                    next_cont_ticks = 4'b0;
                 end
                 else begin
                     next_state_rx = idle;
@@ -87,9 +98,11 @@ module rx_uart#(
                 if(cont_ticks == 4'b1111) begin
                     next_cont_ticks = 4'b0;
                     next_shift_reg = {i_rx, shift_reg[NB_DATA-1:1]};
-                    next_cont_bits = cont_bits + 1;
-                    if (cont_bits == NB_DATA - 1) begin
+                    if (cont_bits == (NB_DATA - 1)) begin
                         next_state_rx = stop;
+                    end
+                    else begin
+                        next_cont_bits = cont_bits + 1;
                     end
                 end
                 else begin
@@ -110,4 +123,5 @@ module rx_uart#(
         endcase
     
     end
+
 endmodule
