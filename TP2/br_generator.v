@@ -3,18 +3,19 @@
 
 module br_generator(
     input clk,
-    output reg clk_br
+    output reg o_br = 0
     );
     reg[7:0] counter = 0;
     
     always @(posedge clk) begin
         
         if (counter == 163) begin
-            clk_br <= ~clk_br;
+            o_br <= 1;
             counter <= 0;
         end
         else begin
-            counter <=counter+1;
+            o_br <= 0;
+            counter <= counter + 1;
         end
     end 
 endmodule

@@ -4,7 +4,8 @@ module tx_uart #(
     parameter NB_DATA = 8,
     parameter SB_TICK = 16
 )(
-    input i_clk_br,
+    input clk,
+    input i_br,
     input i_reset,
     input i_tx_start,
     input [NB_DATA-1:0] i_data,
@@ -23,7 +24,7 @@ module tx_uart #(
     reg [NB_DATA-1:0] data_reg, next_data_reg;
     reg tx_reg, next_tx_reg; 
 
-    always @(posedge i_clk_br) begin
+    always @(posedge clk) begin
         if (i_reset) begin
             state_tx  <= idle;
             cont      <= 0;
@@ -51,45 +52,62 @@ module tx_uart #(
 
         case (state_tx)
             idle: begin
-                next_tx_reg = 1'b1;
-                if (i_tx_start) begin
-                    next_cont     = 0;
-                    next_data_reg = i_data;
-                    next_state_tx = start;
+                if (i_br==1) begin
+                    next_tx_reg = 1'b1;
+                    if (i_tx_start) begin
+                        next_cont     = 0;
+                        next_data_reg = i_data;
+                        next_state_tx = start;
+                    end
                 end
             end
 
             start: begin
-                next_tx_reg = 1'b0;
-                if (cont == 4'd15) begin
-                    next_cont      = 0;
-                    next_cont_bits = 0;
-                    next_state_tx  = data;
-                end else
-                    next_cont = cont + 1'b1;
+                if (i_br==1) begin
+                    next_tx_reg = 1'b0;
+                    if (cont == 4'd15) begin
+                        next_cont      = 0;
+                        next_cont_bits = 0;
+                        next_state_tx  = data;
+                    end 
+                    else begin
+                        next_cont = cont + 1'b1;
+                    end
+                end
+                
             end
 
             data: begin
-                next_tx_reg = data_reg[0];
-                if (cont == 4'd15) begin
-                    next_cont     = 0;
-                    next_data_reg = data_reg >> 1;
-                    if (cont_bits == NB_DATA-1)
-                        next_state_tx = stop;
-                    else
-                        next_cont_bits = cont_bits + 1'b1;
-                end else
-                    next_cont = cont + 1'b1;
+                if (i_br == 1) begin
+                                 next_tx_reg = data_reg[0];
+                    if (cont == 4'd15) begin
+                        next_cont     = 0;
+                        next_data_reg = data_reg >> 1;
+                        if (cont_bits == NB_DATA-1) begin
+                            next_state_tx = stop;
+                        end
+                        else begin
+                            next_cont_bits = cont_bits + 1'b1;
+                        end
+                    end
+                    else begin
+                        next_cont = cont + 1'b1;
+                    end
+                end
             end
 
             stop: begin
-                next_tx_reg = 1'b1;
-                if (cont == SB_TICK-1) begin
-                    next_cont     = 0;
-                    o_tx_done     = 1'b1;
-                    next_state_tx = idle;
-                end else
-                    next_cont = cont + 1'b1;
+                if (i_br == 1) begin
+                    next_tx_reg = 1'b1;
+                    if (cont == SB_TICK-1) begin
+                        next_cont     = 0;
+                        o_tx_done     = 1'b1;
+                        next_state_tx = idle;
+                    end
+                    else begin
+                        next_cont = cont + 1'b1;
+                    end                   
+                end
             end
         endcase
     end
