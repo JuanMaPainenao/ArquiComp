@@ -1,169 +1,138 @@
-`timescale 1ns / 1ps
+`timescale 1ns/1ps
 // ============================================================================
-// tb_top.v - Testbench autoverificante de top (Debug Unit + IF por UART)
+// tb_top.v - Prueba del sistema completo por la UART (como desde la PC)
 //
-// Hace de "PC": manda comandos por i_rx y decodifica las respuestas de o_tx.
-//   1. 'L' con 4 instrucciones          -> espera 'K'
-//   2. 'D'                              -> PC = 0, instr = prog[0]
-//   3. 'S'                              -> PC = 4, instr = prog[1]
-//   4. 'R'                              -> halted, PC = 16, instr = HALT
-//   5. 'L' con 1 instruccion (reprog.)  -> 'K', y 'D' muestra PC = 0
-//   6. comando invalido                 -> '?'
+// El testbench hace de PC: manda bytes por i_rx a 38400 baud y decodifica lo
+// que sale por o_tx. Secuencia:
+//   'L' + ejemplo.s  -> espera 'K'
+//   'D'              -> dump de 1 + 4*43 bytes: PC = 0, IF/ID vacio
+//   'S' 'S'          -> PC = 8, IF/ID = palabra 1, ID/EX = palabra 0
+//   'R'              -> corre hasta el HALT: estado halted, PC = 0x34
+// Simula ~200 ms de tiempo real: cada dump son 173 bytes (~45 ms). Tarda un par de minutos.
 // ============================================================================
 module tb_top;
-
-    localparam BR_PERIOD  = 164;            // ciclos de clk por tick (br_generator)
-    localparam BIT_CYCLES = 16*BR_PERIOD;   // ciclos de clk por bit
-
-    reg  clk, i_reset, i_rx;
+    reg  clk = 0, i_reset = 1, i_rx = 1;
     wire o_tx;
 
-    integer errores = 0;
+    top dut (.clk(clk), .i_reset(i_reset), .i_rx(i_rx), .o_tx(o_tx));
 
-    reg [31:0] prog [0:3];
-    reg [7:0]  rsp [0:15];
+    always #5 clk = ~clk;                       // 100 MHz
 
-    top dut (
-        .clk     (clk),
-        .i_reset (i_reset),
-        .i_rx    (i_rx),
-        .o_tx    (o_tx)
-    );
+    localparam real BIT_PC   = 1.0e9 / 38400;   // la PC transmite a 38400
+    localparam real BIT_FPGA = 164 * 16 * 10;   // la FPGA a ~38110 baud
+    localparam N_DUMP = 43;
 
-    always #5 clk = ~clk;
+    reg [31:0] prog [0:15];
+    reg [7:0]  rx_buf [0:1 + 4 * N_DUMP - 1];
+    integer fallas = 0, total = 0, i;
 
-    task uart_send_byte(input [7:0] data);
-        integer k;
+    task uart_send(input [7:0] b);
+        integer n;
         begin
-            i_rx = 1'b0;
-            repeat (BIT_CYCLES) @(posedge clk);
-            for (k = 0; k < 8; k = k + 1) begin
-                i_rx = data[k];
-                repeat (BIT_CYCLES) @(posedge clk);
-            end
-            i_rx = 1'b1;
-            repeat (BIT_CYCLES) @(posedge clk);
+            i_rx = 0; #(BIT_PC);
+            for (n = 0; n < 8; n = n + 1) begin i_rx = b[n]; #(BIT_PC); end
+            i_rx = 1; #(BIT_PC);
         end
     endtask
 
-    task uart_send_word(input [31:0] w);
-        begin
-            uart_send_byte(w[7:0]);
-            uart_send_byte(w[15:8]);
-            uart_send_byte(w[23:16]);
-            uart_send_byte(w[31:24]);
-        end
-    endtask
-
-    task uart_recv_byte(output [7:0] data);
-        integer k;
+    task uart_recv(output [7:0] b);
+        integer n;
         begin
             @(negedge o_tx);
-            repeat (BIT_CYCLES + BIT_CYCLES/2) @(posedge clk);
-            for (k = 0; k < 8; k = k + 1) begin
-                data[k] = o_tx;
-                if (k != 7)
-                    repeat (BIT_CYCLES) @(posedge clk);
+            #(BIT_FPGA * 1.5);
+            for (n = 0; n < 8; n = n + 1) begin b[n] = o_tx; #(BIT_FPGA); end
+        end
+    endtask
+
+    task recv_dump;
+        integer n;
+        begin
+            for (n = 0; n < 1 + 4 * N_DUMP; n = n + 1) uart_recv(rx_buf[n]);
+        end
+    endtask
+
+    function [31:0] palabra(input integer idx);
+        palabra = {rx_buf[1 + 4*idx + 3], rx_buf[1 + 4*idx + 2],
+                   rx_buf[1 + 4*idx + 1], rx_buf[1 + 4*idx]};
+    endfunction
+
+    task check(input [31:0] valor, input [31:0] esperado, input [8*28-1:0] que);
+        begin
+            total = total + 1;
+            if (valor !== esperado) begin
+                fallas = fallas + 1;
+                $display("MAL  %0s: %h (esperado %h)", que, valor, esperado);
             end
         end
     endtask
 
-    task uart_recv_n(input integer n);
-        integer k;
-        begin
-            for (k = 0; k < n; k = k + 1)
-                uart_recv_byte(rsp[k]);
-        end
-    endtask
-
-    task check(input [255:0] nombre, input [31:0] got, input [31:0] exp);
-        begin
-            if (got !== exp) begin
-                $display("ERROR %0s: got=%h esperado=%h", nombre, got, exp);
-                errores = errores + 1;
-            end
-            else
-                $display("OK    %0s = %h", nombre, got);
-        end
-    endtask
-
-    // Dump: rsp[0] = estado, rsp[1..4] = PC, rsp[5..8] = instr
-    task check_dump(input [7:0] halted, input [31:0] pc, input [31:0] instr);
-        begin
-            check("halted", rsp[0], halted);
-            check("PC",     {rsp[4], rsp[3], rsp[2], rsp[1]}, pc);
-            check("instr",  {rsp[8], rsp[7], rsp[6], rsp[5]}, instr);
-        end
-    endtask
-
-    integer j;
-
+    reg [7:0] r;
     initial begin
-        prog[0] = 32'h00500093;  // addi x1, x0, 5
-        prog[1] = 32'h00a00113;  // addi x2, x0, 10
-        prog[2] = 32'h002081b3;  // add  x3, x1, x2
-        prog[3] = 32'h40208233;  // sub  x4, x1, x2
+        prog[ 0] = 32'h00000293;
+        prog[ 1] = 32'h00100313;
+        prog[ 2] = 32'h00B00393;
+        prog[ 3] = 32'h006282B3;
+        prog[ 4] = 32'h00130313;
+        prog[ 5] = 32'hFE731CE3;
+        prog[ 6] = 32'h00502023;
+        prog[ 7] = 32'h00002503;
+        prog[ 8] = 32'h00A505B3;
+        prog[ 9] = 32'h12345437;
+        prog[10] = 32'h67840413;
+        prog[11] = 32'h008000EF;
+        prog[12] = 32'h00000000;
+        prog[13] = 32'h00800223;
+        prog[14] = 32'h00404603;
+        prog[15] = 32'h00008067;
 
-        clk = 0; i_rx = 1; i_reset = 1;
-        repeat (5) @(posedge clk);
-        i_reset = 0;
-        repeat (10) @(posedge clk);
+        #1000 i_reset = 0;
+        #1000;
 
-        $display("--- 1. Carga de programa");
+        // ---- Carga ----
+        // Se escucha en paralelo: la FPGA responde 'K' antes de que termine
+        // el bit de stop del ultimo byte (lo recibe a mitad del stop).
         fork
             begin
-                uart_send_byte("L");
-                uart_send_byte(8'd4);
-                uart_send_byte(8'd0);
-                for (j = 0; j < 4; j = j + 1)
-                    uart_send_word(prog[j]);
+                uart_send(8'h4C); uart_send(8'd16); uart_send(8'd0);
+                for (i = 0; i < 16; i = i + 1) begin
+                    uart_send(prog[i][7:0]);   uart_send(prog[i][15:8]);
+                    uart_send(prog[i][23:16]); uart_send(prog[i][31:24]);
+                end
             end
-            uart_recv_n(1);
+            uart_recv(r);
         join
-        check("ack load", rsp[0], "K");
+        check(r, "K", "respuesta a L");
 
-        $display("--- 2. Dump");
-        fork uart_send_byte("D"); uart_recv_n(9); join
-        check_dump(0, 32'd0, prog[0]);
+        // ---- Dump sin ejecutar ----
+        fork uart_send("D"); recv_dump; join
+        check(rx_buf[0], 0, "D: estado");
+        check(palabra(0), 0, "D: PC");
+        check(palabra(1), prog[0], "D: instr en IF");
+        check(palabra(3), 32'h00000013, "D: IF/ID vacio (NOP)");
+        check(palabra(42), 0, "D: x31");
 
-        $display("--- 3. Paso a paso");
-        fork uart_send_byte("S"); uart_recv_n(9); join
-        check_dump(0, 32'd4, prog[1]);
+        // ---- Dos pasos ----
+        fork uart_send("S"); recv_dump; join
+        fork uart_send("S"); recv_dump; join
+        check(palabra(0), 8, "S S: PC");
+        check(palabra(3), prog[1], "S S: IF/ID.instr");
+        check(palabra(5), 0, "S S: ID/EX.pc");
+        check(palabra(9), 32'h00001400, "S S: ID/EX rd=5");   // addi t0, zero, 0
 
-        $display("--- 4. Continuo");
-        fork uart_send_byte("R"); uart_recv_n(9); join
-        check_dump(1, 32'd16, 32'h0);
+        // ---- Continuo ----
+        fork uart_send("R"); recv_dump; join
+        check(rx_buf[0], 1, "R: estado halted");
+        check(palabra(0), 32'h34, "R: PC final");
+        check(palabra(10) >> 14 & 1, 1, "R: HALT en ID/EX");
 
-        $display("--- 5. Reprogramacion");
-        fork
-            begin
-                uart_send_byte("L");
-                uart_send_byte(8'd1);
-                uart_send_byte(8'd0);
-                uart_send_word(32'h00100093);  // addi x1, x0, 1
-            end
-            uart_recv_n(1);
-        join
-        check("ack reload", rsp[0], "K");
-        fork uart_send_byte("D"); uart_recv_n(9); join
-        check_dump(0, 32'd0, 32'h00100093);
-
-        $display("--- 6. Comando invalido");
-        fork uart_send_byte("Z"); uart_recv_n(1); join
-        check("nak", rsp[0], "?");
-
-        if (errores == 0)
-            $display("TEST OK");
-        else
-            $display("TEST FALLIDO: %0d errores", errores);
+        if (fallas == 0) $display("tb_top: OK (%0d chequeos)", total);
+        else             $display("tb_top: %0d de %0d chequeos fallaron", fallas, total);
         $finish;
     end
 
-    // Por si algo se cuelga esperando una respuesta
     initial begin
-        #500_000_000;
-        $display("TIMEOUT");
+        #400_000_000;
+        $display("tb_top: TIMEOUT");
         $finish;
     end
-
 endmodule

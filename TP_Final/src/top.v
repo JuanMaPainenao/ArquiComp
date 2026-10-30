@@ -2,23 +2,43 @@
 // ============================================================================
 // top.v - Top para la Basys 3
 //
-// Por ahora solo esta la etapa IF (pc_unit + instr_mem) conectada a la Debug
-// Unit. A medida que se agreguen etapas:
-//   - cpu_halted pasa a ser "HALT llego a WB" (pipeline vacio).
-//   - Se agregan entradas al mux del dump (registros, latches, memoria).
+//   UART (br_generator, rx_uart, tx_uart) + Debug Unit + cpu
+//
+// El procesador vive en cpu.v (IF + ID por ahora) junto con el mux del dump,
+// asi el top no cambia cuando se agregan etapas: solo hay que actualizar
+// N_DUMP si cpu.v agrega palabras al dump.
+//
+// Cambios respecto de la version anterior:
+//   - La etapa IF y el mux del dump se mudaron a cpu.v.
+//   - i_rx e i_reset pasan por un sincronizador de 2 flip-flops: son senales
+//     asincronicas al clock y, sin sincronizar, cada flip-flop de la FSM puede
+//     ver un valor distinto si cambian justo en el flanco.
 // ============================================================================
 module top #(
     parameter ADDR_W = 8
 )(
     input  wire clk,          // 100 MHz
-    input  wire i_reset,      // boton
+    input  wire i_reset,      // boton (btnC)
     input  wire i_rx,
     output wire o_tx
 );
 
-    localparam N_DUMP = 2;
+    localparam N_DUMP = 43;   // ver tabla del dump en cpu.v
     localparam DUMP_W = 8;
-    localparam HALT   = 32'h00000000;
+
+    // ---------------- Sincronizadores ----------------
+    reg rx_s1  = 1'b1, rx_s2  = 1'b1;     // la linea UART en reposo esta en 1
+    reg rst_s1 = 1'b0, rst_s2 = 1'b0;
+
+    always @(posedge clk) begin
+        rx_s1  <= i_rx;
+        rx_s2  <= rx_s1;
+        rst_s1 <= i_reset;
+        rst_s2 <= rst_s1;
+    end
+
+    wire rx    = rx_s2;
+    wire reset = rst_s2;
 
     // ---------------- UART ----------------
     wire       br_tick;
@@ -36,8 +56,8 @@ module top #(
     rx_uart u_rx (
         .clk       (clk),
         .i_br      (br_tick),
-        .i_rx      (i_rx),
-        .i_reset   (i_reset),
+        .i_rx      (rx),
+        .i_reset   (reset),
         .o_dout    (rx_data),
         .o_rx_done (rx_done)
     );
@@ -45,7 +65,7 @@ module top #(
     tx_uart u_tx (
         .clk        (clk),
         .i_br       (br_tick),
-        .i_reset    (i_reset),
+        .i_reset    (reset),
         .i_tx_start (tx_start),
         .i_data     (tx_data),
         .o_tx       (o_tx),
@@ -60,7 +80,7 @@ module top #(
     wire [ADDR_W-1:0] imem_addr;
     wire [31:0]       imem_wdata;
     wire [DUMP_W-1:0] dump_idx;
-    reg  [31:0]       dump_data;
+    wire [31:0]       dump_data;
 
     debug_unit #(
         .ADDR_W (ADDR_W),
@@ -68,7 +88,7 @@ module top #(
         .DUMP_W (DUMP_W)
     ) u_du (
         .clk        (clk),
-        .rst        (i_reset),
+        .rst        (reset),
         .rx_data    (rx_data),
         .rx_done    (rx_done),
         .br_tick    (br_tick),
@@ -85,46 +105,17 @@ module top #(
         .dump_data  (dump_data)
     );
 
-    wire cpu_rst = i_reset | du_cpu_rst;
-
-    // ---------------- Etapa IF ----------------
-    wire [31:0] pc;
-    wire [31:0] pc_plus4;
-    wire [31:0] instr;
-
-    // Provisorio: sin pipeline todavia, el HALT se detecta en IF
-    wire halt_if = (instr == HALT);
-    assign cpu_halted = halt_if;
-
-    pc_unit u_pc (
-        .clk             (clk),
-        .rst             (cpu_rst),
-        .en              (cpu_en),
-        .stall           (1'b0),
-        .halt            (halt_if),
-        .redirect        (1'b0),
-        .redirect_target (32'd0),
-        .pc              (pc),
-        .pc_plus4        (pc_plus4)
+    // ---------------- Procesador ----------------
+    cpu #(.ADDR_W(ADDR_W)) u_cpu (
+        .clk        (clk),
+        .rst        (reset | du_cpu_rst),
+        .en         (cpu_en),
+        .imem_we    (imem_we),
+        .imem_addr  (imem_addr),
+        .imem_wdata (imem_wdata),
+        .halted     (cpu_halted),
+        .dump_idx   (dump_idx),
+        .dump_data  (dump_data)
     );
-
-    instr_mem #(.ADDR_W(ADDR_W)) u_imem (
-        .clk       (clk),
-        .pc        (pc),
-        .instr     (instr),
-        .dbg_we    (imem_we),
-        .dbg_addr  (imem_addr),
-        .dbg_wdata (imem_wdata),
-        .dbg_rdata ()
-    );
-
-    // ---------------- Mux del dump ----------------
-    always @(*) begin
-        case (dump_idx)
-            8'd0:    dump_data = pc;
-            8'd1:    dump_data = instr;
-            default: dump_data = 32'hDEADBEEF;
-        endcase
-    end
 
 endmodule
