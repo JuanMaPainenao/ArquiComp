@@ -51,7 +51,7 @@ module ex #(
 
     // ---------------- Hacia IF (saltos) ----------------
     output wire               redirect,         // salto tomado -> pc_unit
-    output wire [NB_DATA-1:0] redirect_target,  // destino del salto -> pc_unit
+    output reg [NB_DATA-1:0] redirect_target,  // destino del salto -> pc_unit
     output wire               flush             // burbuja en IF/ID e ID/EX
 );
 
@@ -141,6 +141,17 @@ end
 // redirect = taken, flush = taken
 //
 
+always @(*) begin
+    if(jalr) begin
+        redirect_target = (A + imm) & ~32'b1;  // limpia bit 0
+    end else begin
+        redirect_target = pc + imm;
+    end
+
+end
+
+assign redirect = taken;    // pc_unit carga redirect_target en lugar de PC+4
+assign flush    = taken;    // las 2 instrucciones de atras (IF/ID, ID/EX) -> burbuja
 
 // ----------------------------------------------------------------------------
 // 6. SALIDAS HACIA EX/MEM
@@ -148,6 +159,8 @@ end
 // alu_result = resultado de la ALU
 // store_data = B' (rs2 despues del forwarding, ANTES del mux de alu_src)
 //
+
+assign store_data = B_;     // dato de sw/sh/sb (alu_result lleva la direccion)
 
 
 endmodule
