@@ -2,10 +2,16 @@
 // ============================================================================
 // top.v - Top para la Basys 3
 //
-// Por ahora solo esta la etapa IF (pc_unit + instr_mem) conectada a la Debug
-// Unit. A medida que se agreguen etapas:
+// Por ahora: etapa IF (pc_unit + instr_mem) y banco de registros (todavia sin
+// escritura, falta WB), conectados a la Debug Unit. A medida que se agreguen
+// etapas:
 //   - cpu_halted pasa a ser "HALT llego a WB" (pipeline vacio).
-//   - Se agregan entradas al mux del dump (registros, latches, memoria).
+//   - Se agregan entradas al mux del dump (latches, memoria).
+//
+// Layout del dump (palabras de 32 bits, indice = dump_idx):
+//   0            PC
+//   1            instruccion en IF
+//   2 .. 2+N-1   x0 .. x(N-1), con N = DUMP_REGS
 // ============================================================================
 module top #(
     parameter ADDR_W = 8
@@ -16,7 +22,9 @@ module top #(
     output wire o_tx
 );
 
-    localparam N_DUMP = 2;
+    localparam DUMP_REGS = 10;              // registros que van en el dump (x0..x9)
+    localparam REG_BASE  = 2;               // indice del dump donde empieza x0
+    localparam N_DUMP    = REG_BASE + DUMP_REGS;
     localparam DUMP_W = 8;
     localparam HALT   = 32'h00000000;
 
@@ -59,6 +67,7 @@ module top #(
     wire              imem_we;
     wire [ADDR_W-1:0] imem_addr;
     wire [31:0]       imem_wdata;
+    wire [31:0]       imem_rdata;
     wire [DUMP_W-1:0] dump_idx;
     reg  [31:0]       dump_data;
 
@@ -81,6 +90,7 @@ module top #(
         .imem_we    (imem_we),
         .imem_addr  (imem_addr),
         .imem_wdata (imem_wdata),
+        .imem_rdata (imem_rdata),
         .dump_idx   (dump_idx),
         .dump_data  (dump_data)
     );
@@ -115,16 +125,39 @@ module top #(
         .dbg_we    (imem_we),
         .dbg_addr  (imem_addr),
         .dbg_wdata (imem_wdata),
-        .dbg_rdata ()
+        .dbg_rdata (imem_rdata)
+    );
+
+    // ---------------- Banco de registros ----------------
+    // Lectura (rs1/rs2) y escritura (WB) quedan sin usar hasta tener ID y WB.
+    wire [DUMP_W-1:0] reg_idx = dump_idx - REG_BASE;
+    wire [31:0]       reg_dbg_data;
+
+    reg_file u_rf (
+        .clk      (clk),
+        .rst      (cpu_rst),
+        .en       (cpu_en),
+        .rs1      (5'd0),
+        .rs2      (5'd0),
+        .rs1_data (),
+        .rs2_data (),
+        .we       (1'b0),
+        .rd       (5'd0),
+        .rd_data  (32'd0),
+        .dbg_addr (reg_idx[4:0]),
+        .dbg_data (reg_dbg_data)
     );
 
     // ---------------- Mux del dump ----------------
     always @(*) begin
-        case (dump_idx)
-            8'd0:    dump_data = pc;
-            8'd1:    dump_data = instr;
-            default: dump_data = 32'hDEADBEEF;
-        endcase
+        if (dump_idx == 0)
+            dump_data = pc;
+        else if (dump_idx == 1)
+            dump_data = instr;
+        else if (dump_idx >= REG_BASE && dump_idx < REG_BASE + DUMP_REGS)
+            dump_data = reg_dbg_data;
+        else
+            dump_data = 32'hDEADBEEF;
     end
 
 endmodule

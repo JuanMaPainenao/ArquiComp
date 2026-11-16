@@ -9,6 +9,7 @@
 //   4. 'R'                              -> halted, PC = 16, instr = HALT
 //   5. 'L' con 1 instruccion (reprog.)  -> 'K', y 'D' muestra PC = 0
 //   6. comando invalido                 -> '?'
+//   7. 'P' 4                            -> lee imem: prog nuevo + restos viejos
 // ============================================================================
 module tb_top;
 
@@ -21,7 +22,7 @@ module tb_top;
     integer errores = 0;
 
     reg [31:0] prog [0:3];
-    reg [7:0]  rsp [0:15];
+    reg [7:0]  rsp [0:63];
 
     top dut (
         .clk     (clk),
@@ -87,12 +88,20 @@ module tb_top;
         end
     endtask
 
-    // Dump: rsp[0] = estado, rsp[1..4] = PC, rsp[5..8] = instr
+    // Dump: rsp[0] = estado, rsp[1..4] = PC, rsp[5..8] = instr,
+    //       rsp[9..] = x0..x9 (todavia en 0: no hay WB)
+    localparam DUMP_LEN = 1 + 4*(2 + 10);
+    integer r;
     task check_dump(input [7:0] halted, input [31:0] pc, input [31:0] instr);
         begin
             check("halted", rsp[0], halted);
             check("PC",     {rsp[4], rsp[3], rsp[2], rsp[1]}, pc);
             check("instr",  {rsp[8], rsp[7], rsp[6], rsp[5]}, instr);
+            for (r = 0; r < 10; r = r + 1)
+                if ({rsp[12+4*r], rsp[11+4*r], rsp[10+4*r], rsp[9+4*r]} !== 32'd0) begin
+                    $display("ERROR x%0d != 0", r);
+                    errores = errores + 1;
+                end
         end
     endtask
 
@@ -123,15 +132,15 @@ module tb_top;
         check("ack load", rsp[0], "K");
 
         $display("--- 2. Dump");
-        fork uart_send_byte("D"); uart_recv_n(9); join
+        fork uart_send_byte("D"); uart_recv_n(DUMP_LEN); join
         check_dump(0, 32'd0, prog[0]);
 
         $display("--- 3. Paso a paso");
-        fork uart_send_byte("S"); uart_recv_n(9); join
+        fork uart_send_byte("S"); uart_recv_n(DUMP_LEN); join
         check_dump(0, 32'd4, prog[1]);
 
         $display("--- 4. Continuo");
-        fork uart_send_byte("R"); uart_recv_n(9); join
+        fork uart_send_byte("R"); uart_recv_n(DUMP_LEN); join
         check_dump(1, 32'd16, 32'h0);
 
         $display("--- 5. Reprogramacion");
@@ -145,12 +154,27 @@ module tb_top;
             uart_recv_n(1);
         join
         check("ack reload", rsp[0], "K");
-        fork uart_send_byte("D"); uart_recv_n(9); join
+        fork uart_send_byte("D"); uart_recv_n(DUMP_LEN); join
         check_dump(0, 32'd0, 32'h00100093);
 
         $display("--- 6. Comando invalido");
         fork uart_send_byte("Z"); uart_recv_n(1); join
         check("nak", rsp[0], "?");
+
+        $display("--- 7. Lectura de memoria de programa");
+        fork
+            begin
+                uart_send_byte("P");
+                uart_send_byte(8'd4);
+                uart_send_byte(8'd0);
+            end
+            uart_recv_n(16);
+        join
+        // La reprogramacion solo piso la palabra 0; las demas son de la carga 1
+        check("imem[0]", {rsp[3],  rsp[2],  rsp[1],  rsp[0]},  32'h00100093);
+        check("imem[1]", {rsp[7],  rsp[6],  rsp[5],  rsp[4]},  prog[1]);
+        check("imem[2]", {rsp[11], rsp[10], rsp[9],  rsp[8]},  prog[2]);
+        check("imem[3]", {rsp[15], rsp[14], rsp[13], rsp[12]}, prog[3]);
 
         if (errores == 0)
             $display("TEST OK");

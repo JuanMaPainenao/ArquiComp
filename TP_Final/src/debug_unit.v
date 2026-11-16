@@ -11,6 +11,10 @@
 //        manda un dump.
 //   'D' (0x44) Manda un dump sin ejecutar nada.
 //   'X' (0x58) Resetea el procesador (PC, pipeline) y responde 'K'.
+//   'P' (0x50) N_lo N_hi
+//        Lee las primeras N palabras de la memoria de programa y las manda
+//        en little-endian (4*N bytes). Sirve para verificar lo cargado.
+//        Con N = 0 responde 'K'.
 //   Cualquier otro byte -> responde '?'.
 //
 // Dump (FPGA -> PC): 1 byte de estado (bit0 = halted) + N_DUMP palabras de
@@ -51,6 +55,7 @@ module debug_unit #(
     output wire              imem_we,
     output reg  [ADDR_W-1:0] imem_addr,
     output reg  [31:0]       imem_wdata,
+    input  wire [31:0]       imem_rdata,   // lectura (asincronica) en imem_addr
 
     // Bus de dump
     output wire [DUMP_W-1:0] dump_idx,
@@ -62,6 +67,7 @@ module debug_unit #(
     localparam CMD_RUN   = 8'h52;  // 'R'
     localparam CMD_DUMP  = 8'h44;  // 'D'
     localparam CMD_RESET = 8'h58;  // 'X'
+    localparam CMD_PREAD = 8'h50;  // 'P'
     localparam RSP_ACK   = 8'h4B;  // 'K'
     localparam RSP_NAK   = 8'h3F;  // '?'
 
@@ -75,6 +81,14 @@ module debug_unit #(
     localparam ST_DUMP    = 4'd7;
     localparam ST_TX_BR   = 4'd8;
     localparam ST_TX_DONE = 4'd9;
+    localparam ST_PRD_N0  = 4'd10;
+    localparam ST_PRD_N1  = 4'd11;
+    localparam ST_PRD     = 4'd12;
+
+    // Que hacer cuando termina de salir un byte por la UART
+    localparam AFT_IDLE = 2'd0;            // volver a IDLE
+    localparam AFT_DUMP = 2'd1;            // siguiente byte del dump
+    localparam AFT_PRD  = 2'd2;            // siguiente byte de la lectura de imem
 
     localparam DUMP_BYTES = 1 + 4*N_DUMP;  // estado + palabras
 
@@ -82,7 +96,7 @@ module debug_unit #(
     reg [15:0] n_words;                    // palabras que faltan cargar
     reg [1:0]  byte_i;                     // byte dentro de la palabra
     reg [15:0] byte_cnt;                   // byte del dump que se esta mandando
-    reg        is_dump;                    // al terminar el TX: seguir el dump o volver a IDLE
+    reg [1:0]  after;                      // ver AFT_*
 
     wire [15:0] dump_byte = byte_cnt - 16'd1;   // byte 0 es el estado
 
@@ -98,7 +112,7 @@ module debug_unit #(
             n_words    <= 16'd0;
             byte_i     <= 2'd0;
             byte_cnt   <= 16'd0;
-            is_dump    <= 1'b0;
+            after      <= AFT_IDLE;
             tx_data    <= 8'd0;
             imem_addr  <= {ADDR_W{1'b0}};
             imem_wdata <= 32'd0;
@@ -117,15 +131,16 @@ module debug_unit #(
                                 byte_cnt <= 16'd0;
                                 state    <= ST_DUMP;
                             end
+                            CMD_PREAD: state <= ST_PRD_N0;
                             CMD_RESET: begin
                                 cpu_rst <= 1'b1;
                                 tx_data <= RSP_ACK;
-                                is_dump <= 1'b0;
+                                after   <= AFT_IDLE;
                                 state   <= ST_TX_BR;
                             end
                             default: begin
                                 tx_data <= RSP_NAK;
-                                is_dump <= 1'b0;
+                                after   <= AFT_IDLE;
                                 state   <= ST_TX_BR;
                             end
                         endcase
@@ -147,7 +162,7 @@ module debug_unit #(
                         if ({rx_data, n_words[7:0]} == 16'd0) begin
                             cpu_rst <= 1'b1;
                             tx_data <= RSP_ACK;
-                            is_dump <= 1'b0;
+                            after   <= AFT_IDLE;
                             state   <= ST_TX_BR;
                         end
                         else
@@ -172,11 +187,40 @@ module debug_unit #(
                     if (n_words == 16'd1) begin
                         cpu_rst <= 1'b1;
                         tx_data <= RSP_ACK;
-                        is_dump <= 1'b0;
+                        after   <= AFT_IDLE;
                         state   <= ST_TX_BR;
                     end
                     else
                         state <= ST_LOAD_W;
+                end
+
+                // Lectura de la memoria de programa: 'P' N_lo N_hi
+                ST_PRD_N0: begin
+                    if (rx_done) begin
+                        n_words[7:0] <= rx_data;
+                        state        <= ST_PRD_N1;
+                    end
+                end
+
+                ST_PRD_N1: begin
+                    if (rx_done) begin
+                        n_words[15:8] <= rx_data;
+                        imem_addr     <= {ADDR_W{1'b0}};
+                        byte_i        <= 2'd0;
+                        if ({rx_data, n_words[7:0]} == 16'd0) begin
+                            tx_data <= RSP_ACK;
+                            after   <= AFT_IDLE;
+                            state   <= ST_TX_BR;
+                        end
+                        else
+                            state <= ST_PRD;
+                    end
+                end
+
+                ST_PRD: begin
+                    tx_data <= imem_rdata >> (8 * byte_i);
+                    after   <= AFT_PRD;
+                    state   <= ST_TX_BR;
                 end
 
                 // cpu_en = 1 durante exactamente este ciclo
@@ -197,7 +241,7 @@ module debug_unit #(
                         tx_data <= {7'd0, cpu_halted};
                     else
                         tx_data <= dump_data >> (8 * dump_byte[1:0]);
-                    is_dump <= 1'b1;
+                    after   <= AFT_DUMP;
                     state   <= ST_TX_BR;
                 end
 
@@ -208,12 +252,22 @@ module debug_unit #(
 
                 ST_TX_DONE: begin
                     if (tx_done) begin
-                        if (is_dump && byte_cnt != DUMP_BYTES-1) begin
+                        state <= ST_IDLE;
+                        if (after == AFT_DUMP && byte_cnt != DUMP_BYTES-1) begin
                             byte_cnt <= byte_cnt + 16'd1;
                             state    <= ST_DUMP;
                         end
-                        else
-                            state <= ST_IDLE;
+                        if (after == AFT_PRD) begin
+                            byte_i <= byte_i + 2'd1;
+                            if (byte_i == 2'd3) begin
+                                imem_addr <= imem_addr + 1'b1;
+                                n_words   <= n_words - 16'd1;
+                                if (n_words != 16'd1)
+                                    state <= ST_PRD;
+                            end
+                            else
+                                state <= ST_PRD;
+                        end
                     end
                 end
 

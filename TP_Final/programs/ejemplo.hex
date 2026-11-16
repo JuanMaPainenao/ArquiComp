@@ -1,0 +1,6 @@
+# ejemplo.hex - una instruccion por linea en hex. Comentarios con # // o ;
+00500093   # addi x1, x0, 5
+00a00113   # addi x2, x0, 10
+002081b3   # add  x3, x1, x2
+40208233   # sub  x4, x1, x2
+00000000   # HALT
