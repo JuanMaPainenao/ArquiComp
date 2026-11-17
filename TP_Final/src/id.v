@@ -26,7 +26,24 @@ module id_stage(
 
     // Debug ports
     input  wire [4:0]  dbg_reg_addr,
-    output wire [31:0] dbg_reg_data
+    output wire [31:0] dbg_reg_data,
+
+    //immgen
+    output wire [31:0] imm,
+
+    //control unit
+    output wire reg_write,
+    output wire alu_src,
+    output wire [1:0] alu_op,
+    output wire mem_read,
+    output wire mem_write,
+    output wire [1:0] wb_sel,
+    output wire branch,
+    output wire jump,
+    output wire jalr,
+    output wire halt,
+    output wire uses_rs1,
+    output wire uses_rs2
 
 );
     wire [6:0] opcode;
@@ -49,6 +66,28 @@ module id_stage(
         .dbg_data(dbg_reg_data)
 
     );
+
+    imm_gen u_imm_gen(
+        .instr(instr),
+        .imm(imm)
+    );
+
+    control_unit u_control_unit(
+        .opcode(opcode),
+        .reg_write(reg_write),
+        .alu_src(alu_src),
+        .alu_op(alu_op),
+        .mem_read(mem_read),
+        .mem_write(mem_write),
+        .wb_sel(wb_sel),
+        .branch(branch),
+        .jump(jump),
+        .jalr(jalr),
+        .halt(halt),
+        .uses_rs1(uses_rs1),
+        .uses_rs2(uses_rs2)
+    );
+
 
 
 
