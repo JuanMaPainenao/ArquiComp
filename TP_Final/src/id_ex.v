@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module id_ex(
     input wire clk,
     input wire rst,

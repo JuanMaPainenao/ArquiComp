@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module control_unit(
     input wire [6:0] opcode,
 
@@ -84,7 +82,7 @@ always @(*) begin
             uses_rs1 = 1'b1;
         end
 
-        7'b0110111: begin //lui
+        7'b0110111: begin //jalr
             reg_write = 1'b1;
             alu_src = 1'b1;
             alu_op = 2'b11;
@@ -94,8 +92,6 @@ always @(*) begin
         7'b0000000: begin
             halt = 1'b1;
         end
-
-        default: ;
          
 
     endcase
