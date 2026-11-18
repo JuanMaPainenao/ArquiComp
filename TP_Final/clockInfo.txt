@@ -1,7 +1,7 @@
 -------------------------------------
-| Tool Version : Vivado v.2025.1
-| Date         : Thu Nov 12 01:30:29 2026
-| Host         : ale
+| Tool Version : Vivado v.2025.2
+| Date         : Tue Nov 17 23:01:35 2026
+| Host         : JuanmaPC
 | Design       : design_1
 | Device       : xc7a35t-cpg236-1--
 -------------------------------------

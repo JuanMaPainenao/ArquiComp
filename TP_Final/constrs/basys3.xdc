@@ -1,9 +1,9 @@
 ## Constraints del TP Final (top) en la Basys 3 (XC7A35T-1CPG236C)
 
 ## Clock del sistema: 100 MHz
-set_property PACKAGE_PIN W5 [get_ports clk]
-set_property IOSTANDARD LVCMOS33 [get_ports clk]
-create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk]
+set_property PACKAGE_PIN W5 [get_ports clk_100]
+set_property IOSTANDARD LVCMOS33 [get_ports clk_100]
+create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk_100]
 
 ## BTNC: reset sincronico activo en alto
 set_property PACKAGE_PIN U18 [get_ports i_reset]

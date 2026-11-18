@@ -1,20 +1,22 @@
 `timescale 1ns / 1ps
 // ============================================================================
-// tb_top.v - Testbench autoverificante de top (Debug Unit + IF por UART)
+// tb_top.v - Testbench autoverificante de top (Debug Unit + cpu por UART)
 //
 // Hace de "PC": manda comandos por i_rx y decodifica las respuestas de o_tx.
 //   1. 'L' con 4 instrucciones          -> espera 'K'
 //   2. 'D'                              -> PC = 0, instr = prog[0]
 //   3. 'S'                              -> PC = 4, instr = prog[1]
-//   4. 'R'                              -> halted, PC = 16, instr = HALT
+//   4. 'R'                              -> halted, PC = 20, x1..x4
 //   5. 'L' con 1 instruccion (reprog.)  -> 'K', y 'D' muestra PC = 0
 //   6. comando invalido                 -> '?'
 //   7. 'P' 4                            -> lee imem: prog nuevo + restos viejos
 // ============================================================================
 module tb_top;
 
-    localparam BR_PERIOD  = 164;            // ciclos de clk por tick (br_generator)
-    localparam BIT_CYCLES = 16*BR_PERIOD;   // ciclos de clk por bit
+    // clk del tb = 100 MHz (placa). El DUT corre a 80 MHz (MMCM) con un tick
+    // cada 130 ciclos: 1 bit = 16*130/80 MHz = 26 us = 2600 ciclos de 100 MHz.
+    // Simular con la libreria unisim: xelab -L unisims_ver tb_top glbl
+    localparam BIT_CYCLES = 2600;           // ciclos de clk (100 MHz) por bit
 
     reg  clk, i_reset, i_rx;
     wire o_tx;
@@ -22,10 +24,10 @@ module tb_top;
     integer errores = 0;
 
     reg [31:0] prog [0:3];
-    reg [7:0]  rsp [0:63];
+    reg [7:0]  rsp [0:255];
 
     top dut (
-        .clk     (clk),
+        .clk_100 (clk),
         .i_reset (i_reset),
         .i_rx    (i_rx),
         .o_tx    (o_tx)
@@ -88,20 +90,20 @@ module tb_top;
         end
     endtask
 
-    // Dump: rsp[0] = estado, rsp[1..4] = PC, rsp[5..8] = instr,
-    //       rsp[9..] = x0..x9 (todavia en 0: no hay WB)
-    localparam DUMP_LEN = 1 + 4*(2 + 10);
-    integer r;
+    // Dump (ver top.v): rsp[0] = estado, despues palabras de 32 bits:
+    //   0 PC, 1 M, 2..21 latches (2 = instr en IF, 3 = IF/ID instr),
+    //   22..53 x0..x31, 54.. M palabras de dmem. Estos programas no hacen
+    //   stores, asi que M = 1.
+    localparam DUMP_LEN = 1 + 4*(54 + 1);
+    function [31:0] w(input integer k);
+        w = {rsp[4*k+4], rsp[4*k+3], rsp[4*k+2], rsp[4*k+1]};
+    endfunction
     task check_dump(input [7:0] halted, input [31:0] pc, input [31:0] instr);
         begin
             check("halted", rsp[0], halted);
-            check("PC",     {rsp[4], rsp[3], rsp[2], rsp[1]}, pc);
-            check("instr",  {rsp[8], rsp[7], rsp[6], rsp[5]}, instr);
-            for (r = 0; r < 10; r = r + 1)
-                if ({rsp[12+4*r], rsp[11+4*r], rsp[10+4*r], rsp[9+4*r]} !== 32'd0) begin
-                    $display("ERROR x%0d != 0", r);
-                    errores = errores + 1;
-                end
+            check("PC",     w(0), pc);
+            check("M",      w(1), 32'd1);
+            check("instr",  w(2), instr);
         end
     endtask
 
@@ -115,6 +117,7 @@ module tb_top;
 
         clk = 0; i_rx = 1; i_reset = 1;
         repeat (5) @(posedge clk);
+        wait (dut.locked);                  // el MMCM tarda unos us en enganchar
         i_reset = 0;
         repeat (10) @(posedge clk);
 
@@ -141,7 +144,12 @@ module tb_top;
 
         $display("--- 4. Continuo");
         fork uart_send_byte("R"); uart_recv_n(DUMP_LEN); join
-        check_dump(1, 32'd16, 32'h0);
+        // HALT (memoria en 0) en 0x10 -> el PC queda en 0x14
+        check_dump(1, 32'd20, 32'h0);
+        check("x1", w(22+1), 32'd5);
+        check("x2", w(22+2), 32'd10);
+        check("x3", w(22+3), 32'd15);
+        check("x4", w(22+4), 32'hFFFFFFFB);
 
         $display("--- 5. Reprogramacion");
         fork
@@ -156,6 +164,7 @@ module tb_top;
         check("ack reload", rsp[0], "K");
         fork uart_send_byte("D"); uart_recv_n(DUMP_LEN); join
         check_dump(0, 32'd0, 32'h00100093);
+        check("x1 (reset)", w(22+1), 32'd0);
 
         $display("--- 6. Comando invalido");
         fork uart_send_byte("Z"); uart_recv_n(1); join

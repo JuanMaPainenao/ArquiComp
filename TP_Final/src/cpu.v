@@ -26,7 +26,11 @@ module cpu #(
     output wire [DMEM_ADDR_W-1:0] dmem_max_addr,
 
     // Debug: PC actual
-    output wire [31:0]            pc
+    output wire [31:0]            pc,
+
+    // Debug: latches intermedios y señales de riesgo (ver mux al final)
+    input  wire [4:0]             dbg_latch_sel,
+    output reg  [31:0]            dbg_latch_data
 );
 
     // ======================= Señales =======================
@@ -399,5 +403,64 @@ module cpu #(
         .reg_write_out  (wb_we),
         .halted         (halted)
     );
+
+    // ======================= Debug: latches =======================
+    // Cada latch guarda pc4 (PC + 4 de la instruccion que tiene). Una burbuja
+    // (rst / flush) deja pc4 = 0, asi que en la PC: pc4 = 0 -> burbuja, si no
+    // la instruccion es la de la direccion pc4 - 4.
+    //
+    //  0 IF : instruccion leida de imem      10 EX/MEM ctrl (ver abajo)
+    //  1 IF/ID instr                         11 MEM/WB pc4
+    //  2 IF/ID pc4                           12 MEM/WB alu_result
+    //  3 ID/EX pc4                           13 MEM/WB load_data
+    //  4 ID/EX rs1_data                      14 MEM/WB ctrl (ver abajo)
+    //  5 ID/EX rs2_data                      15 riesgos (ver abajo)
+    //  6 ID/EX imm                           16 EX: resultado de la ALU
+    //  7 ID/EX ctrl (ver abajo)              17 EX: destino del salto
+    //  8 EX/MEM pc4                          18 WB: dato a escribir en rd
+    //  9 EX/MEM alu_result / 19 EX/MEM store_data
+    //
+    // ID/EX ctrl: [31:27] rd [26:22] rs1 [21:17] rs2 [16:14] funct3
+    //   [13] funct7[5] [12] reg_write [11] alu_src [10:9] alu_op [8] mem_read
+    //   [7] mem_write [6:5] wb_sel [4] branch [3] jump [2] jalr [1] halt
+    // EX/MEM y MEM/WB ctrl: [31:27] rd [26:24] funct3 [23] reg_write
+    //   [22] mem_read [21] mem_write [20:19] wb_sel [18] halt
+    // Riesgos (combinacional, lo que va a pasar en el proximo flanco):
+    //   [0] stall [1] flush_if_id [2] flush_id_ex [3] redirect [4] fetch_stop
+    //   [6:5] fwd_a [8:7] fwd_b [9] halted
+    always @(*) begin
+        case (dbg_latch_sel)
+            5'd0:  dbg_latch_data = if_instr;
+            5'd1:  dbg_latch_data = ifid_instr;
+            5'd2:  dbg_latch_data = ifid_pc4;
+            5'd3:  dbg_latch_data = idex_pc4;
+            5'd4:  dbg_latch_data = idex_rs1_data;
+            5'd5:  dbg_latch_data = idex_rs2_data;
+            5'd6:  dbg_latch_data = idex_imm;
+            5'd7:  dbg_latch_data = {idex_rd, idex_rs1, idex_rs2, idex_funct3,
+                                     idex_funct7[5], idex_reg_write, idex_alu_src,
+                                     idex_alu_op, idex_mem_read, idex_mem_write,
+                                     idex_wb_sel, idex_branch, idex_jump,
+                                     idex_jalr, idex_halt, 1'b0};
+            5'd8:  dbg_latch_data = exmem_pc4;
+            5'd9:  dbg_latch_data = exmem_alu_result;
+            5'd10: dbg_latch_data = {exmem_rd, exmem_funct3, exmem_reg_write,
+                                     exmem_mem_read, exmem_mem_write,
+                                     exmem_wb_sel, exmem_halt, 18'd0};
+            5'd11: dbg_latch_data = memwb_pc4;
+            5'd12: dbg_latch_data = memwb_alu_result;
+            5'd13: dbg_latch_data = memwb_load_data;
+            5'd14: dbg_latch_data = {memwb_rd, 3'd0, memwb_reg_write,
+                                     2'b00, memwb_wb_sel, memwb_halt, 18'd0};
+            5'd15: dbg_latch_data = {22'd0, halted, fwd_b, fwd_a, fetch_stop,
+                                     ex_redirect, flush_id_ex, flush_if_id,
+                                     stall};
+            5'd16: dbg_latch_data = ex_alu_result;
+            5'd17: dbg_latch_data = ex_redirect_target;
+            5'd18: dbg_latch_data = wb_data;
+            5'd19: dbg_latch_data = exmem_store_data;
+            default: dbg_latch_data = 32'hDEADBEEF;
+        endcase
+    end
 
 endmodule

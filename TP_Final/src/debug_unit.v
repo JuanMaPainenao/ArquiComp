@@ -17,8 +17,9 @@
 //        Con N = 0 responde 'K'.
 //   Cualquier otro byte -> responde '?'.
 //
-// Dump (FPGA -> PC): 1 byte de estado (bit0 = halted) + N_DUMP palabras de
-// 32 bits en little-endian. Que palabra es cada indice lo decide el top con
+// Dump (FPGA -> PC): 1 byte de estado (bit0 = halted) + dump_words palabras
+// de 32 bits en little-endian. dump_words es una entrada (no un parametro)
+// para que el top pueda mandar solo la memoria de datos usada. Que palabra es cada indice lo decide el top con
 // un mux sobre dump_idx (PC, registros, latches, memoria de datos...). Asi la
 // Debug Unit no cambia cuando agregamos cosas para ver.
 //
@@ -32,7 +33,6 @@
 // ============================================================================
 module debug_unit #(
     parameter ADDR_W = 8,                  // bits de direccion de instr_mem
-    parameter N_DUMP = 2,                  // palabras de 32 bits por dump
     parameter DUMP_W = 8                   // ancho de dump_idx
 )(
     input  wire              clk,
@@ -59,7 +59,8 @@ module debug_unit #(
 
     // Bus de dump
     output wire [DUMP_W-1:0] dump_idx,
-    input  wire [31:0]       dump_data
+    input  wire [31:0]       dump_data,
+    input  wire [13:0]       dump_words    // palabras de 32 bits por dump
 );
 
     localparam CMD_LOAD  = 8'h4C;  // 'L'
@@ -90,7 +91,6 @@ module debug_unit #(
     localparam AFT_DUMP = 2'd1;            // siguiente byte del dump
     localparam AFT_PRD  = 2'd2;            // siguiente byte de la lectura de imem
 
-    localparam DUMP_BYTES = 1 + 4*N_DUMP;  // estado + palabras
 
     reg [3:0]  state;
     reg [15:0] n_words;                    // palabras que faltan cargar
@@ -253,7 +253,7 @@ module debug_unit #(
                 ST_TX_DONE: begin
                     if (tx_done) begin
                         state <= ST_IDLE;
-                        if (after == AFT_DUMP && byte_cnt != DUMP_BYTES-1) begin
+                        if (after == AFT_DUMP && byte_cnt != {dump_words, 2'b00}) begin
                             byte_cnt <= byte_cnt + 16'd1;
                             state    <= ST_DUMP;
                         end

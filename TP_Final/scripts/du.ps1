@@ -2,37 +2,56 @@
 #
 # Modo interactivo (sin argumentos): abre un prompt "du>"
 #   .\scripts\du.ps1
-#   .\scripts\du.ps1 -Port COM5
+#   .\scripts\du.ps1 -Port COM5          (sin -Port busca el puerto FTDI de la Basys 3)
 #
 # Modo un solo comando:
 #   .\scripts\du.ps1 S
-#   .\scripts\du.ps1 L 00500093 00a00113
+#   .\scripts\du.ps1 file programs\pipeline.hex
 #
 # Comandos:
 #   (Enter)      un paso (igual que s)
-#   s            un paso (un ciclo) y muestra la vista
+#   s [N]        N pasos (un ciclo cada uno, default 1) y muestra la vista
 #   r            correr hasta HALT y muestra la vista
 #   d / v        muestra la vista sin ejecutar
 #   x            reset del procesador
 #   L w0 w1 ...  cargar instrucciones en hex desde la direccion 0
 #   file X.hex   cargar un programa desde archivo (una palabra hex por linea)
 #   mem [N]      listar las primeras N palabras de la memoria de programa
+#   dmem         memoria de datos usada (palabras, bytes y valor con signo)
+#   lat          contenido crudo de los latches intermedios
 #   raw 4C 01..  mandar bytes crudos en hex y mostrar lo que vuelva
 #   help / q
 #
-# La vista muestra las 5 instrucciones anteriores y las 5 siguientes al PC,
-# desensambladas, con la instruccion actual (la que esta en IF) en verde, y al
-# costado los registros x0..x9 (en amarillo los que cambiaron en el ultimo paso).
+# La vista muestra:
+#   - Pipeline: que instruccion hay en cada etapa (IF ID EX MEM WB), con los
+#     datos de su latch, y los riesgos del ciclo (stall, flush, forwarding).
+#   - Codigo alrededor del PC con la etapa en la que esta cada instruccion.
+#   - Los 32 registros (en amarillo los que cambiaron en el ultimo comando).
+#   - La memoria de datos usada (en amarillo las palabras que cambiaron).
+#
+# Formato del dump (ver src/top.v): 1 byte de estado (bit0 = halted) y despues
+# palabras de 32 bits little-endian: PC, M, 20 latches, x0..x31, M palabras de
+# memoria de datos.
 param(
     [Parameter(Position=0, ValueFromRemainingArguments=$true)][string[]]$Args_,
-    [string]$Port = 'COM14'
+    [string]$Port = ''
 )
 
-$CTX      = 5      # instrucciones antes y despues del PC en la vista
-$IMEM_LEN = 256    # palabras de la memoria de programa (2^ADDR_W)
-$NREGS    = 10     # registros en el dump (DUMP_REGS en top.v)
-$DUMP_LEN = 1 + 4 * (2 + $NREGS)   # estado + PC + instr + registros
-$script:prevRegs = $null
+$CTX      = 4      # instrucciones antes y despues del PC en la vista
+$IMEM_LEN = 256    # palabras de la memoria de programa (2^IMEM_ADDR_W)
+$N_LAT    = 20     # latches en el dump (N_LAT en top.v)
+$N_FIXED  = 2 + $N_LAT + 32                  # PC, M, latches, registros
+$FIXED_LEN = 1 + 4 * $N_FIXED                # bytes antes de la memoria
+$script:prev  = $null
+$script:ciclo = 0
+
+# Si no se pasa -Port se busca el puerto USB-serie FTDI (la Basys 3)
+if ($Port -eq '') {
+    $ftdi = Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+            Where-Object { $_.Manufacturer -eq 'FTDI' -and $_.Name -match '\((COM\d+)\)' } |
+            Select-Object -First 1
+    if ($ftdi) { $Port = [regex]::Match($ftdi.Name, 'COM\d+').Value } else { $Port = 'COM14' }
+}
 
 $p = New-Object System.IO.Ports.SerialPort $Port,38400,'None',8,'One'
 $p.ReadTimeout = 3000
@@ -50,13 +69,23 @@ function Recv([int]$n) {
 
 function Send([byte[]]$tx) { $p.Write($tx, 0, $tx.Length) }
 
-# Manda D/S/R y devuelve @{halted; pc; instr; regs}
+# Manda D/S/R y devuelve el estado completo
 function Get-State([char]$cmd) {
     Send ([byte[]]@([byte]$cmd))
-    $r = Recv $DUMP_LEN
-    $regs = New-Object 'uint32[]' $NREGS
-    for ($i = 0; $i -lt $NREGS; $i++) { $regs[$i] = [BitConverter]::ToUInt32($r, 9 + 4 * $i) }
-    @{ halted = $r[0]; pc = [BitConverter]::ToUInt32($r, 1); instr = [BitConverter]::ToUInt32($r, 5); regs = $regs }
+    $r = Recv $FIXED_LEN
+    $w = New-Object 'uint32[]' $N_FIXED
+    for ($i = 0; $i -lt $N_FIXED; $i++) { $w[$i] = [BitConverter]::ToUInt32($r, 1 + 4 * $i) }
+    $m  = [int]$w[1]
+    $rm = Recv (4 * $m)
+    $mem = New-Object 'uint32[]' $m
+    for ($i = 0; $i -lt $m; $i++) { $mem[$i] = [BitConverter]::ToUInt32($rm, 4 * $i) }
+    @{
+        halted = ($r[0] -band 1)
+        pc     = $w[0]
+        lat    = $w[2..(1 + $N_LAT)]
+        regs   = $w[(2 + $N_LAT)..($N_FIXED - 1)]
+        dmem   = $mem
+    }
 }
 
 # Lee las primeras n palabras de la memoria de programa (comando 'P')
@@ -97,6 +126,7 @@ function Disasm([uint32]$w, [int64]$addr) {
             return "{0,-6}{1}, {2}, {3}" -f $n, $rd, $rs1, $rs2
         }
         0x13 {
+            if ($w -eq 0x13) { return 'nop' }
             $sh = Bits $w 24 20
             switch ($f3) {
                 1 { return "{0,-6}{1}, {2}, {3}" -f 'slli', $rd, $rs1, $sh }
@@ -115,9 +145,9 @@ function Disasm([uint32]$w, [int64]$addr) {
         }
         0x63 {
             $n = @{0='beq';1='bne';4='blt';5='bge';6='bltu';7='bgeu'}[[int]$f3]
-            if ($n) { return "{0,-6}{1}, {2}, {3}   -> 0x{4:X3}" -f $n, $rs1, $rs2, $immB, ($addr + $immB) }
+            if ($n) { return "{0,-6}{1}, {2}, {3} ->0x{4:X3}" -f $n, $rs1, $rs2, $immB, ($addr + $immB) }
         }
-        0x6F { return "{0,-6}{1}, {2}   -> 0x{3:X3}" -f 'jal', $rd, $immJ, ($addr + $immJ) }
+        0x6F { return "{0,-6}{1}, {2} ->0x{3:X3}" -f 'jal', $rd, $immJ, ($addr + $immJ) }
         0x67 { return "{0,-6}{1}, {2}({3})" -f 'jalr', $rd, $immI, $rs1 }
         0x37 { return "{0,-6}{1}, 0x{2:X}" -f 'lui', $rd, $immU }
         0x17 { return "{0,-6}{1}, 0x{2:X}" -f 'auipc', $rd, $immU }
@@ -126,49 +156,169 @@ function Disasm([uint32]$w, [int64]$addr) {
 }
 
 # ------------------------------------------------------------------ Vista
-function Show-View($st) {
-    $pcIdx = [int]($st.pc / 4)
-    $first = [Math]::Max(0, $pcIdx - $CTX)
-    $last  = [Math]::Min($IMEM_LEN - 1, $pcIdx + $CTX)
-    $mem   = Read-Imem ($last + 1)
+$FWD = @('ID', 'MEM', 'WB', '?')
 
-    Write-Host ""
-    $estado = if ($st.halted) { 'HALTED' } else { 'corriendo' }
-    $col    = if ($st.halted) { 'Red' } else { 'Cyan' }
-    Write-Host ("  PC = 0x{0:X8}   " -f $st.pc) -NoNewline
-    Write-Host $estado -ForegroundColor $col
-    $W = 50   # ancho de la columna de codigo
-    Write-Host ("  {0}   {1}" -f ("-" * $W), "----- registros -----")
-    $nlines = [Math]::Max($last - $first + 1, $NREGS)
-    for ($k = 0; $k -lt $nlines; $k++) {
-        # Columna de codigo
-        $i = $first + $k
-        if ($i -le $last) {
-            $a = 4 * $i
-            $line = ("0x{0:X3}  {1:X8}  {2}" -f $a, $mem[$i], (Disasm $mem[$i] $a)).PadRight($W - 3)
-            if ($i -eq $pcIdx) {
-                Write-Host -NoNewline "  "
-                Write-Host -NoNewline ">> $line" -ForegroundColor Black -BackgroundColor Green
-            } else {
-                Write-Host -NoNewline "     $line" -ForegroundColor DarkGray
-            }
+# Direccion de la instruccion que tiene un latch (pc4 = 0 -> burbuja)
+function Stage-Addr([uint32]$pc4) { if ($pc4 -eq 0) { -1 } else { [int64]$pc4 - 4 } }
+
+function Imem-Word($imem, [int64]$a) {
+    $i = [int]($a / 4)
+    if ($a -ge 0 -and $i -lt $imem.Length) { $imem[$i] } else { [uint32]0 }
+}
+
+function Fmt-Hex([uint32]$v) { '0x{0:X8}' -f $v }
+
+function Show-Pipeline($st, $imem) {
+    $L  = $st.lat
+    $hz = $L[15]
+    $c7 = $L[7]; $c10 = $L[10]; $c14 = $L[14]
+
+    # IF
+    $stages = @()
+    $stages += ,@('IF',  [int64]$st.pc, $L[0], '')
+    # ID
+    $aID = Stage-Addr $L[2]
+    $stages += ,@('ID',  $aID, $L[1], '')
+    # EX
+    $aEX = Stage-Addr $L[3]
+    $info = ''
+    if ($aEX -ge 0) {
+        $rs1 = Bits $c7 26 22; $rs2 = Bits $c7 21 17
+        $fa = $FWD[(Bits $hz 6 5)]; $fb = $FWD[(Bits $hz 8 7)]
+        $info = "rs1 x{0}={1}[{2}] rs2 x{3}={4}[{5}] imm={6} alu={7}" -f $rs1, (Fmt-Hex $L[4]), $fa, $rs2, (Fmt-Hex $L[5]), $fb, (Sext $L[6] 32), (Fmt-Hex $L[16])
+        if ($hz -band 8) { $info += " -> SALTA a 0x{0:X3}" -f $L[17] }
+    }
+    $stages += ,@('EX',  $aEX, (Imem-Word $imem $aEX), $info)
+    # MEM
+    $aMEM = Stage-Addr $L[8]
+    $info = ''
+    if ($aMEM -ge 0) {
+        if (Bits $c10 21 21)     { $info = "M[0x{0:X3}] <- {1}" -f $L[9], (Fmt-Hex $L[19]) }
+        elseif (Bits $c10 22 22) { $info = "lee M[0x{0:X3}]" -f $L[9] }
+        else                     { $info = "alu={0}" -f (Fmt-Hex $L[9]) }
+    }
+    $stages += ,@('MEM', $aMEM, (Imem-Word $imem $aMEM), $info)
+    # WB
+    $aWB = Stage-Addr $L[11]
+    $info = ''
+    if ($aWB -ge 0) {
+        $rd = Bits $c14 31 27
+        if ((Bits $c14 23 23) -and $rd -ne 0) { $info = "x{0} <- {1}" -f $rd, (Fmt-Hex $L[18]) }
+        elseif (Bits $c14 18 18)              { $info = 'HALT llego a WB' }
+        else                                  { $info = '(no escribe)' }
+    }
+    $stages += ,@('WB',  $aWB, (Imem-Word $imem $aWB), $info)
+
+    Write-Host "  ---- pipeline ------------------------------------------------------------------" -ForegroundColor DarkCyan
+    foreach ($s in $stages) {
+        Write-Host -NoNewline ("  {0,-4}" -f $s[0]) -ForegroundColor Cyan
+        if ($s[1] -lt 0) {
+            Write-Host "  --    (burbuja)" -ForegroundColor DarkGray
         } else {
-            Write-Host -NoNewline ("  " + (" " * $W))
-        }
-        # Columna de registros
-        if ($k -lt $NREGS) {
-            $v = $st.regs[$k]
-            $txt = "   {0,-4}0x{1:X8} {2,11}" -f "x$k", $v, [int32]$v
-            $changed = $script:prevRegs -and ($script:prevRegs[$k] -ne $v)
-            if ($changed) { Write-Host $txt -ForegroundColor Yellow }
-            elseif ($v -eq 0) { Write-Host $txt -ForegroundColor DarkGray }
-            else { Write-Host $txt }
-        } else {
-            Write-Host ""
+            Write-Host -NoNewline ("0x{0:X3}  {1,-26}" -f $s[1], (Disasm $s[2] $s[1]))
+            Write-Host ("  " + $s[3]) -ForegroundColor Gray
         }
     }
-    Write-Host ("  {0}   {1}" -f ("-" * $W), ("-" * 21))
-    $script:prevRegs = $st.regs
+    $r = @()
+    if ($hz -band 1)  { $r += 'STALL load-use (PC e IF/ID quietos, burbuja en ID/EX)' }
+    if ($hz -band 8)  { $r += 'SALTO tomado (flush IF/ID e ID/EX)' }
+    elseif ($hz -band 2) { $r += 'flush IF/ID' }
+    if ($hz -band 16) { $r += 'HALT: fetch frenado' }
+    if (Bits $hz 6 5) { $r += 'fwd A desde ' + $FWD[(Bits $hz 6 5)] }
+    if (Bits $hz 8 7) { $r += 'fwd B desde ' + $FWD[(Bits $hz 8 7)] }
+    if ($r.Count -eq 0) { $r = @('ninguno') }
+    Write-Host ("  riesgos (proximo flanco): " + ($r -join ' | ')) -ForegroundColor Magenta
+    $stages
+}
+
+function Show-Code($st, $imem, $stages) {
+    $pcIdx = [int]($st.pc / 4)
+    $first = [Math]::Max(0, $pcIdx - $CTX - 4)
+    $last  = [Math]::Min($IMEM_LEN - 1, $pcIdx + $CTX)
+    Write-Host "  ---- codigo --------------------------------------------------------------------" -ForegroundColor DarkCyan
+    for ($i = $first; $i -le $last; $i++) {
+        $a = 4 * $i
+        $tags = @($stages | Where-Object { $_[1] -eq $a } | ForEach-Object { $_[0] })
+        $tag = ($tags -join ',')
+        $line = ("0x{0:X3}  {1:X8}  {2,-28} {3}" -f $a, $imem[$i], (Disasm $imem[$i] $a), $tag)
+        if ($i -eq $pcIdx) {
+            Write-Host -NoNewline "  "
+            Write-Host ">> $line" -ForegroundColor Black -BackgroundColor Green
+        } elseif ($tag) {
+            Write-Host "     $line" -ForegroundColor White
+        } else {
+            Write-Host "     $line" -ForegroundColor DarkGray
+        }
+    }
+}
+
+function Show-Regs($st) {
+    Write-Host "  ---- registros -----------------------------------------------------------------" -ForegroundColor DarkCyan
+    for ($row = 0; $row -lt 8; $row++) {
+        Write-Host -NoNewline "  "
+        for ($col = 0; $col -lt 4; $col++) {
+            $k = $row + 8 * $col
+            $v = $st.regs[$k]
+            $txt = "{0,-4}{1:X8} {2,11}   " -f "x$k", $v, [int32]$v
+            $changed = $script:prev -and ($script:prev.regs[$k] -ne $v)
+            if ($changed) { Write-Host -NoNewline $txt -ForegroundColor Yellow }
+            elseif ($v -eq 0) { Write-Host -NoNewline $txt -ForegroundColor DarkGray }
+            else { Write-Host -NoNewline $txt }
+        }
+        Write-Host ""
+    }
+}
+
+function Show-Dmem($st, [switch]$Full) {
+    $m = $st.dmem.Length
+    Write-Host ("  ---- memoria de datos (usada: 0x000..0x{0:X3}, {1} palabras) ---------------------" -f (4 * $m - 1), $m) -ForegroundColor DarkCyan
+    $max = if ($Full) { $m } else { [Math]::Min($m, 16) }
+    for ($i = 0; $i -lt $max; $i++) {
+        $v = $st.dmem[$i]
+        $b = [BitConverter]::GetBytes($v)
+        $txt = "  0x{0:X3}  {1:X8}   bytes {2}   {3,11}" -f (4 * $i), $v, (Hex $b), [int32]$v
+        $changed = $script:prev -and (($i -ge $script:prev.dmem.Length) -or ($script:prev.dmem[$i] -ne $v))
+        if ($changed) { Write-Host $txt -ForegroundColor Yellow }
+        elseif ($v -eq 0) { Write-Host $txt -ForegroundColor DarkGray }
+        else { Write-Host $txt }
+    }
+    if ($max -lt $m) { Write-Host "  ... ($($m - $max) palabras mas, usar 'dmem')" -ForegroundColor DarkGray }
+}
+
+function Show-View($st) {
+    # Hay que leer hasta la mayor direccion que este en alguna etapa
+    $n = [int]($st.pc / 4) + $CTX + 1
+    foreach ($k in 2, 3, 8, 11) { $n = [Math]::Max($n, [int]($st.lat[$k] / 4)) }
+    $imem  = Read-Imem ([Math]::Min($IMEM_LEN, $n))
+
+    Write-Host ""
+    $estado = if ($st.halted) { 'HALTED (pipeline vacio)' } else { 'corriendo' }
+    $col    = if ($st.halted) { 'Red' } else { 'Cyan' }
+    Write-Host ("  ciclo {0,-5} PC = 0x{1:X8}   " -f $script:ciclo, $st.pc) -NoNewline
+    Write-Host $estado -ForegroundColor $col
+    $stages = Show-Pipeline $st $imem
+    Show-Code $st $imem $stages
+    Show-Regs $st
+    Show-Dmem $st
+    $script:prev = $st
+}
+
+function Show-Latches($st) {
+    $names = @('IF  instr', 'IF/ID instr', 'IF/ID pc4', 'ID/EX pc4', 'ID/EX rs1_data', 'ID/EX rs2_data',
+               'ID/EX imm', 'ID/EX ctrl', 'EX/MEM pc4', 'EX/MEM alu_result', 'EX/MEM ctrl',
+               'MEM/WB pc4', 'MEM/WB alu_result', 'MEM/WB load_data', 'MEM/WB ctrl', 'riesgos',
+               'EX alu (comb.)', 'EX destino salto', 'WB dato a rd', 'EX/MEM store_data')
+    for ($i = 0; $i -lt $N_LAT; $i++) { Write-Host ("  {0,2}  {1,-18} {2}" -f $i, $names[$i], (Fmt-Hex $st.lat[$i])) }
+    $c = $st.lat[7]
+    Write-Host ("  ID/EX ctrl: rd=x{0} rs1=x{1} rs2=x{2} f3={3} f7b5={4} reg_write={5} alu_src={6} alu_op={7} mem_read={8} mem_write={9} wb_sel={10} branch={11} jump={12} jalr={13} halt={14}" -f `
+        (Bits $c 31 27), (Bits $c 26 22), (Bits $c 21 17), (Bits $c 16 14), (Bits $c 13 13), (Bits $c 12 12), (Bits $c 11 11),
+        (Bits $c 10 9), (Bits $c 8 8), (Bits $c 7 7), (Bits $c 6 5), (Bits $c 4 4), (Bits $c 3 3), (Bits $c 2 2), (Bits $c 1 1))
+    foreach ($k in 10, 14) {
+        $c = $st.lat[$k]
+        Write-Host ("  {0} ctrl: rd=x{1} f3={2} reg_write={3} mem_read={4} mem_write={5} wb_sel={6} halt={7}" -f `
+            $(if ($k -eq 10) { 'EX/MEM' } else { 'MEM/WB' }), (Bits $c 31 27), (Bits $c 26 24), (Bits $c 23 23),
+            (Bits $c 22 22), (Bits $c 21 21), (Bits $c 20 19), (Bits $c 18 18))
+    }
 }
 
 # ------------------------------------------------------------------ Comandos
@@ -194,6 +344,16 @@ function Run-Cmd([string[]]$tok) {
             for ($i = 0; $i -lt $n; $i++) {
                 Write-Host ("  0x{0:X3}  {1:X8}  {2}" -f (4 * $i), $mem[$i], (Disasm $mem[$i] (4 * $i)))
             }
+            return
+        }
+        'DMEM' {
+            $st = Get-State 'D'
+            Show-Dmem $st -Full
+            $script:prev = $st
+            return
+        }
+        'LAT' {
+            Show-Latches (Get-State 'D')
             return
         }
         'FILE' {
@@ -222,6 +382,7 @@ function Run-Cmd([string[]]$tok) {
             $r = Recv 1
             if ($r[0] -eq 0x4B) { Write-Host "OK, cargado ($($rest.Count) instrucciones)" -ForegroundColor Green }
             else { Write-Host ("Respuesta inesperada: {0:X2}" -f $r[0]) -ForegroundColor Red }
+            $script:ciclo = 0; $script:prev = $null
             Show-View (Get-State 'D')
             return
         }
@@ -230,12 +391,36 @@ function Run-Cmd([string[]]$tok) {
             $r = Recv 1
             if ($r[0] -eq 0x4B) { Write-Host "OK, reset" -ForegroundColor Green }
             else { Write-Host ("Respuesta inesperada: {0:X2}" -f $r[0]) -ForegroundColor Red }
+            $script:ciclo = 0; $script:prev = $null
             Show-View (Get-State 'D')
             return
         }
-        { 'S','R','D','V' -contains $_ } {
-            $cmd = if ($c -eq 'V') { 'D' } else { $c }
-            Show-View (Get-State $cmd)
+        'S' {
+            $n = 1
+            if ($rest.Count -ge 1) { $n = [int]$rest[0] }
+            $st = $null
+            for ($k = 0; $k -lt $n; $k++) {
+                # cpu_en se corta con halted: si ya estaba halted, el paso no ejecuta
+                if (($script:ciclo -is [int]) -and -not ($script:prev -and $script:prev.halted)) { $script:ciclo++ }
+                $st = Get-State 'S'
+                if ($st.halted) { break }
+            }
+            Show-View $st
+            return
+        }
+        'R' {
+            try { $st = Get-State 'R' }
+            catch {
+                Write-Host "No llego a HALT en 3 s (programa sin HALT o loop infinito)." -ForegroundColor Red
+                Write-Host "La Debug Unit sigue en modo continuo: apreta BTNC (reset) en la placa." -ForegroundColor Red
+                return
+            }
+            $script:ciclo = '?'
+            Show-View $st
+            return
+        }
+        { 'D','V' -contains $_ } {
+            Show-View (Get-State 'D')
             return
         }
         default { Write-Host "Comando desconocido: $c (escribi help)" -ForegroundColor Yellow }
@@ -244,14 +429,16 @@ function Run-Cmd([string[]]$tok) {
 
 $help = @"
 Comandos:
-  (Enter)       un paso
-  s             un paso
+  (Enter)       un paso (un ciclo de clock)
+  s [N]         N pasos
   r             correr hasta HALT
   d / v         ver estado sin ejecutar
   x             reset del procesador
   L w0 w1 ...   cargar instrucciones (hex)
-  file X.hex    cargar programa desde archivo
+  file X.hex    cargar programa desde archivo (ej: file programs\pipeline.hex)
   mem [N]       listar memoria de programa (default 16 palabras)
+  dmem          memoria de datos usada completa
+  lat           latches intermedios en crudo
   raw 44 ...    mandar bytes crudos (hex)
   q             salir
 "@

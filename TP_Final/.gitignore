@@ -1,2 +1,14 @@
 # Carpeta personal de pruebas (no se sube)
 sandbox/
+
+# Salidas de Vivado (se regeneran con scripts/build.tcl)
+build/
+.Xil/
+*.jou
+*.log
+*.str
+clockInfo.txt
+dfx_runtime.txt
+xsim.dir/
+*.wdb
+*.pb

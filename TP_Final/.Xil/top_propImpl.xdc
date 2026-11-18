@@ -1,6 +1,6 @@
-set_property SRC_FILE_INFO {cfile:C:/Users/alest/OneDrive/Escritorio/Facultad/ArquiComp/TP_Final/constrs/basys3.xdc rfile:../constrs/basys3.xdc id:1} [current_design]
+set_property SRC_FILE_INFO {cfile:C:/Users/JuanM/Escritorio/TP_Final/constrs/basys3.xdc rfile:../constrs/basys3.xdc id:1} [current_design]
 set_property src_info {type:XDC file:1 line:4 export:INPUT save:INPUT read:READ} [current_design]
-set_property PACKAGE_PIN W5 [get_ports clk]
+set_property PACKAGE_PIN W5 [get_ports clk_100]
 set_property src_info {type:XDC file:1 line:9 export:INPUT save:INPUT read:READ} [current_design]
 set_property PACKAGE_PIN U18 [get_ports i_reset]
 set_property src_info {type:XDC file:1 line:13 export:INPUT save:INPUT read:READ} [current_design]
