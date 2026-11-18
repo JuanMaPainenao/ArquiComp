@@ -1,6 +1,6 @@
 # Etapa EX: decisiones de diseño
 
-Archivos: src/ex.v, src/alu.v, src/ex_mem.v, tb/tb_ex.v
+Archivos: src/ex.v, src/alu.v, src/alu_control.v, src/forwarding_unit.v, src/ex_mem.v, tb/tb_ex.v
 
 EX recibe lo que preparó ID (latch ID/EX) y calcula: el resultado de la operación, la dirección de memoria de loads y stores, y si hay que saltar y a dónde. Es lógica combinacional; el resultado se guarda en el latch EX/MEM en el flanco siguiente.
 
@@ -50,15 +50,15 @@ Cambios respecto del TP1:
 
 ## 5. Codificación de alu_ctrl
 
-Opciones: el esquema del libro (ALUOp de 2 bits en ID y un "ALU control" en EX que mira funct3 y funct7), o decodificar la operación completa en ID.
+Opciones: el esquema del libro (alu_op de 2 bits en ID y una unidad alu_control en EX que mira funct3 y funct7), o decodificar la operación completa en ID.
 
-Elección: la operación completa se decide en ID y llega a EX como alu_ctrl de 4 bits, con el código {instr[30], funct3}.
+Elección: el esquema del libro. La unidad de control de ID genera alu_op, y alu_control (instanciada en EX, entre el latch ID/EX y ex.v) arma el alu_ctrl de 4 bits que recibe la ALU. El detalle de alu_op está en id.md.
 
-ADD 0000, SUB 1000, SLL 0001, SLT 0010, SLTU 0011, XOR 0100, SRL 0101, SRA 1101, OR 0110, AND 0111, PASS_B 1111.
+Código de alu_ctrl, {funct7[5], funct3}: ADD 0000, SUB 1000, SLL 0001, SLT 0010, SLTU 0011, XOR 0100, SRL 0101, SRA 1101, OR 0110, AND 0111, PASS_B 1111.
 
-Por qué: con ese código las instrucciones tipo R se decodifican solas, EX queda más simple y en el dump de la Debug Unit se lee directamente qué operación se ejecuta. Este código tiene que coincidir con el que genera la unidad de control de ID.
+Por qué: la unidad de control queda chica porque solo mira el opcode, y con ese código las instrucciones tipo R se decodifican solas. ex.v no cambia: sigue recibiendo alu_ctrl.
 
-Cuidado: en las instrucciones tipo I el bit 30 es parte del inmediato. Solo se mira en srli y srai. Si se mira siempre, un addi con inmediato negativo se ejecuta como resta.
+Cuidado: en las instrucciones tipo I el bit 30 es parte del inmediato. alu_control solo lo mira en srli y srai. Si se mira siempre, un addi con inmediato negativo se ejecuta como resta.
 
 
 ## 6. lui con PASS_B
@@ -109,16 +109,22 @@ Elección: la suma aparte dentro del always del destino.
 
 Por qué: queda explícito y no depende de que ID ponga bien alu_ctrl para jalr. El costo es un sumador más.
 
-redirect y flush valen lo mismo (taken) pero son dos salidas porque van a lugares distintos: redirect a pc_unit y flush a los latches IF/ID e ID/EX.
+redirect va a pc_unit y a la hazard unit, que es la que hace el flush de IF/ID e ID/EX (ver id.md). La salida flush de ex.v quedó sin conectar.
 
 
 ## 11. Forwarding
 
-Los puertos ya están (ex_mem_result, mem_wb_data, fwd_a, fwd_b) pero todavía no se usan: A = rs1_data y B_ = rs2_data.
+Opciones: frenar el pipeline (stall) en cada dependencia o adelantar el dato (forwarding).
 
-Selector previsto: 00 dato leído en ID, 01 resultado que está en EX/MEM, 10 dato que está en MEM/WB.
+Elección: forwarding. La forwarding unit compara rs1 y rs2 de la instrucción en EX con el rd de las que están en MEM y en WB, y genera fwd_a y fwd_b. En ex.v dos muxes (sección 1) eligen cada operando.
 
-Por qué se deja para después: hace falta tener MEM y WB para que existan esos datos.
+Selector: 00 dato leído en ID, 01 resultado que está en EX/MEM, 10 dato que está en MEM/WB.
+
+Prioridad: MEM le gana a WB, porque es la instrucción más reciente que escribió ese registro. No se adelanta si rd es x0 o si la instrucción no escribe registro.
+
+Por qué: sin forwarding harían falta 2 ciclos de espera entre una instrucción y la siguiente que usa su resultado. Con forwarding el único caso que necesita esperar es el load use, que resuelve la hazard unit (ver id.md).
+
+El dato del store (B_) también se toma después del forwarding, y la comparación de los saltos usa A y B_ forwardeados.
 
 
 ## 12. Estilo
@@ -146,6 +152,4 @@ iverilog g2012 o tb_ex tb/tb_ex.v src/ex.v src/alu.v y después vvp tb_ex
 
 ## Pendiente
 
-1. Forwarding (unidad de forwarding y muxes de la sección 1 de ex.v).
-2. Conectar redirect, redirect_target y flush a pc_unit, if_id e id_ex.
-3. Confirmar con ID la codificación de alu_ctrl.
+Nada pendiente en EX. El pipeline completo se prueba con tb/tb_cpu.v.

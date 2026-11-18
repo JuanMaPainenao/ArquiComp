@@ -82,7 +82,7 @@ always @(*) begin
             uses_rs1 = 1'b1;
         end
 
-        7'b0110111: begin //jalr
+        7'b0110111: begin //lui
             reg_write = 1'b1;
             alu_src = 1'b1;
             alu_op = 2'b11;

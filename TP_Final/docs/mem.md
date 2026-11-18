@@ -29,9 +29,9 @@ Por qué: sb, sh y sw escriben directamente 1, 2 o 4 posiciones, y los loads se 
 
 Opciones: 256 bytes, 1 KB o 4 KB o más.
 
-Elección: 1 KB, con el parámetro ADDR_W = 10.
+Elección: 256 bytes en la placa (DMEM_ADDR_W = 8 en top.v). El módulo tiene ADDR_W = 10 (1 KB) por defecto, que se usa en simulación.
 
-Por qué: alcanza para cualquier programa de prueba del TP y entra sin problema en la Basys 3 aunque se implemente con flip flops (unos 8000 de 41600). Con 4 KB o más una memoria inferida y asincrónica ya es mucha lógica. Se cambia con un solo número.
+Por qué: la primera elección fue 1 KB, pero no entró en la xc7a35t. Como rst borra la memoria entera, se implementa con flip flops y no con RAM distribuida, y cada lectura asincrónica (4 bytes para los loads y 4 para el puerto de debug) es un multiplexor de todas las posiciones. Con 1 KB esos multiplexores ocupan más LUTs de las que tiene la FPGA. Con 256 bytes el diseño completo usa alrededor del 50 % de las LUTs y alcanza para los programas de prueba del TP. Se cambia con un solo número.
 
 Se usan solo los bits bajos de la dirección (addr[ADDR_W-1:0]), así que una dirección fuera de rango da la vuelta. Las direcciones de los 4 bytes (a0 a a3) se declaran de ADDR_W bits por la misma razón.
 
@@ -84,7 +84,7 @@ Elección: borrarla. Un for pone todos los bytes en 0, igual que reg_file con lo
 
 Por qué: cada programa arranca con la memoria en un estado conocido. Responde la pregunta P1 de la consigna: al reprogramar, la memoria de datos se vacía.
 
-Costo: borrar todo en un ciclo obliga a implementar la memoria con flip flops en lugar de RAM distribuida. Con 1 KB entra sin problema.
+Costo: borrar todo en un ciclo obliga a implementar la memoria con flip flops en lugar de RAM distribuida. Es la razón por la que la memoria quedó en 256 bytes (ver sección 3).
 
 
 ## 9. Memoria usada
@@ -97,7 +97,7 @@ Elección: la dirección más alta escrita, en la salida max_addr. Se actualiza 
 
 Por qué: es un registro y una comparación. La ventana fija no es en rigor la memoria usada, y el bit por palabra obliga a un dump de largo variable con direcciones, que complica la Debug Unit y el programa de la PC. Si hace falta se puede cambiar más adelante.
 
-Caso borde: un sw en 1022 escribe 1022, 1023, 0 y 1. Como a3 da la vuelta y vale 1, max_addr no registra el 1023. Solo pasa si se escribe justo al final de la memoria.
+Caso borde: con 256 bytes, un sw en 254 escribe 254, 255, 0 y 1. Como a3 da la vuelta y vale 1, max_addr no registra el 255. Solo pasa si se escribe justo al final de la memoria.
 
 
 ## 10. Puerto de debug
@@ -114,7 +114,7 @@ Igual que en EX, mem.v declara solo lo que usa. rd, pc4, reg_write, wb_sel y hal
 
 ## 12. Pruebas
 
-Se probó con un testbench autoverificante: sw, sh y sb (sb modifica un solo byte), los 5 loads con y sin signo, max_addr (sube con los stores y no baja con uno más bajo), el puerto de debug, que con en = 0 no se escriba, la vuelta de las direcciones al pasar 1023 y que rst borre la memoria y max_addr.
+Se probó con un testbench autoverificante: sw, sh y sb (sb modifica un solo byte), los 5 loads con y sin signo, max_addr (sube con los stores y no baja con uno más bajo), el puerto de debug, que con en = 0 no se escriba, la vuelta de las direcciones al pasar el final de la memoria (con 1 KB) y que rst borre la memoria y max_addr.
 
 
 ## Pendiente

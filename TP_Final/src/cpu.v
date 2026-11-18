@@ -430,36 +430,78 @@ module cpu #(
     //   [6:5] fwd_a [8:7] fwd_b [9] halted
     always @(*) begin
         case (dbg_latch_sel)
-            5'd0:  dbg_latch_data = if_instr;
-            5'd1:  dbg_latch_data = ifid_instr;
-            5'd2:  dbg_latch_data = ifid_pc4;
-            5'd3:  dbg_latch_data = idex_pc4;
-            5'd4:  dbg_latch_data = idex_rs1_data;
-            5'd5:  dbg_latch_data = idex_rs2_data;
-            5'd6:  dbg_latch_data = idex_imm;
-            5'd7:  dbg_latch_data = {idex_rd, idex_rs1, idex_rs2, idex_funct3,
-                                     idex_funct7[5], idex_reg_write, idex_alu_src,
-                                     idex_alu_op, idex_mem_read, idex_mem_write,
-                                     idex_wb_sel, idex_branch, idex_jump,
-                                     idex_jalr, idex_halt, 1'b0};
-            5'd8:  dbg_latch_data = exmem_pc4;
-            5'd9:  dbg_latch_data = exmem_alu_result;
-            5'd10: dbg_latch_data = {exmem_rd, exmem_funct3, exmem_reg_write,
-                                     exmem_mem_read, exmem_mem_write,
-                                     exmem_wb_sel, exmem_halt, 18'd0};
-            5'd11: dbg_latch_data = memwb_pc4;
-            5'd12: dbg_latch_data = memwb_alu_result;
-            5'd13: dbg_latch_data = memwb_load_data;
-            5'd14: dbg_latch_data = {memwb_rd, 3'd0, memwb_reg_write,
-                                     2'b00, memwb_wb_sel, memwb_halt, 18'd0};
-            5'd15: dbg_latch_data = {22'd0, halted, fwd_b, fwd_a, fetch_stop,
-                                     ex_redirect, flush_id_ex, flush_if_id,
-                                     stall};
-            5'd16: dbg_latch_data = ex_alu_result;
-            5'd17: dbg_latch_data = ex_redirect_target;
-            5'd18: dbg_latch_data = wb_data;
-            5'd19: dbg_latch_data = exmem_store_data;
-            default: dbg_latch_data = 32'hDEADBEEF;
+            5'd0: begin
+                dbg_latch_data = if_instr;
+            end
+            5'd1: begin
+                dbg_latch_data = ifid_instr;
+            end
+            5'd2: begin
+                dbg_latch_data = ifid_pc4;
+            end
+            5'd3: begin
+                dbg_latch_data = idex_pc4;
+            end
+            5'd4: begin
+                dbg_latch_data = idex_rs1_data;
+            end
+            5'd5: begin
+                dbg_latch_data = idex_rs2_data;
+            end
+            5'd6: begin
+                dbg_latch_data = idex_imm;
+            end
+            5'd7: begin
+                dbg_latch_data = {idex_rd, idex_rs1, idex_rs2, idex_funct3,
+                                  idex_funct7[5], idex_reg_write, idex_alu_src,
+                                  idex_alu_op, idex_mem_read, idex_mem_write,
+                                  idex_wb_sel, idex_branch, idex_jump,
+                                  idex_jalr, idex_halt, 1'b0};
+            end
+            5'd8: begin
+                dbg_latch_data = exmem_pc4;
+            end
+            5'd9: begin
+                dbg_latch_data = exmem_alu_result;
+            end
+            5'd10: begin
+                dbg_latch_data = {exmem_rd, exmem_funct3, exmem_reg_write,
+                                  exmem_mem_read, exmem_mem_write,
+                                  exmem_wb_sel, exmem_halt, 18'd0};
+            end
+            5'd11: begin
+                dbg_latch_data = memwb_pc4;
+            end
+            5'd12: begin
+                dbg_latch_data = memwb_alu_result;
+            end
+            5'd13: begin
+                dbg_latch_data = memwb_load_data;
+            end
+            5'd14: begin
+                dbg_latch_data = {memwb_rd, 3'd0, memwb_reg_write,
+                                  2'b00, memwb_wb_sel, memwb_halt, 18'd0};
+            end
+            5'd15: begin
+                dbg_latch_data = {22'd0, halted, fwd_b, fwd_a, fetch_stop,
+                                  ex_redirect, flush_id_ex, flush_if_id,
+                                  stall};
+            end
+            5'd16: begin
+                dbg_latch_data = ex_alu_result;
+            end
+            5'd17: begin
+                dbg_latch_data = ex_redirect_target;
+            end
+            5'd18: begin
+                dbg_latch_data = wb_data;
+            end
+            5'd19: begin
+                dbg_latch_data = exmem_store_data;
+            end
+            default: begin
+                dbg_latch_data = 32'hDEADBEEF;
+            end
         endcase
     end
 
