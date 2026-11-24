@@ -1,0 +1,44 @@
+# Generado por asm.py desde programs/instrucciones.s
+ff800093   # 0x000  addi x1, x0, -8
+00300113   # 0x004  addi x2, x0, 3
+002081b3   # 0x008  add  x3, x1, x2
+40110233   # 0x00C  sub  x4, x2, x1
+002112b3   # 0x010  sll  x5, x2, x2
+0020d333   # 0x014  srl  x6, x1, x2
+4020d3b3   # 0x018  sra  x7, x1, x2
+0040f433   # 0x01C  and  x8, x1, x4
+0020e4b3   # 0x020  or   x9, x1, x2
+0040c533   # 0x024  xor  x10, x1, x4
+0020a5b3   # 0x028  slt  x11, x1, x2
+0020b633   # 0x02C  sltu x12, x1, x2
+0ff0f693   # 0x030  andi x13, x1, 0xFF
+ff016713   # 0x034  ori  x14, x2, -16
+fff0c793   # 0x038  xori x15, x1, -1
+ff90a813   # 0x03C  slti x16, x1, -7
+fff13893   # 0x040  sltiu x17, x2, -1
+01e11913   # 0x044  slli x18, x2, 30
+01c95993   # 0x048  srli x19, x18, 28
+41c95a13   # 0x04C  srai x20, x18, 28
+80008ab7   # 0x050  lui  x21, 0x80008
+fffa8a93   # 0x054  addi x21, x21, -1
+01502023   # 0x058  sw   x21, 0(x0)
+00101223   # 0x05C  sh   x1, 4(x0)
+00200323   # 0x060  sb   x2, 6(x0)
+00300b03   # 0x064  lb   x22, 3(x0)
+00304b83   # 0x068  lbu  x23, 3(x0)
+00201c03   # 0x06C  lh   x24, 2(x0)
+00205c83   # 0x070  lhu  x25, 2(x0)
+00402d03   # 0x074  lw   x26, 4(x0)
+00000d93   # 0x078  mv   x27, x0
+001d8d93   # 0x07C  addi x27, x27, 1
+002d8463   # 0x080  beq  x27, x2, sigue
+fe201ce3   # 0x084  bne  x0, x2, atras
+00000013   # 0x088  nop
+0100006f   # 0x08C  j    abajo
+014000ef   # 0x090  jal  x1, func
+01c02423   # 0x094  sw   x28, 8(x0)
+00000000   # 0x098  halt
+ff5ffeef   # 0x09C  jal  x29, arriba
+00100f13   # 0x0A0  addi x30, x0, 1
+02a00e13   # 0x0A4  addi x28, x0, 42
+00008067   # 0x0A8  ret

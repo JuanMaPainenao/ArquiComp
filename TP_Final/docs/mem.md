@@ -120,5 +120,5 @@ Se probó con un testbench autoverificante: sw, sh y sb (sb modifica un solo byt
 ## Pendiente
 
 1. Pasar el testbench a tb/tb_mem.v.
-2. Latch MEM/WB.
-3. Conectar MEM en el módulo que une todo el pipeline, y max_addr y el puerto de debug a la Debug Unit para el dump.
+
+El latch MEM/WB está en wb.md, y la conexión de max_addr y del puerto de debug al dump en debug_unit.md.

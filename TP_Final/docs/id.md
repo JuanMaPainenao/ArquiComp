@@ -92,7 +92,7 @@ rs1 y rs2 (números de registro) viajan para que la forwarding unit los compare 
 
 ## 11. Hazard unit
 
-Se ocupa de las tres situaciones que cambian el flujo normal del pipeline.
+Se ocupa de las tres situaciones que cambian el flujo normal del pipeline. El resumen de todos los riesgos y del HALT está en riesgos.md.
 
 Load use: si la instrucción en EX es un load (mem_read) y la de ID usa su rd (según uses_rs1 y uses_rs2, y con rd distinto de x0), el dato recién estará al final de MEM. Se frena 1 ciclo: stall al PC y a IF/ID, y burbuja en ID/EX. Después el forwarding lo adelanta desde WB. Es el único caso que el forwarding solo no resuelve.
 
