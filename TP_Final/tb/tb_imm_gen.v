@@ -1,11 +1,6 @@
 `timescale 1ns / 1ps
-// ============================================================================
-// tb_imm_gen.v - Testbench autoverificante de imm_gen.v
-//
-// Instrucciones reales (codificadas segun la spec RV32I) y el inmediato que
-// tiene que salir. Incluye valores positivos, negativos y los extremos de
-// cada formato.
-// ============================================================================
+// tb_imm_gen.v - Inmediato de instrucciones reales de cada formato, con valores
+// positivos, negativos y extremos.
 module tb_imm_gen;
 
     reg  [31:0] instr;

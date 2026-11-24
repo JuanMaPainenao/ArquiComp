@@ -41,9 +41,9 @@ Por qué: 0x00000000 se decodifica como HALT. Si el programa no tiene HALT o el 
 
 ## 5. Prioridad del próximo PC
 
-Orden en pc_unit: rst, después en = 0 (se mantiene), después salto tomado (redirect), después stall o halt (se mantiene) y por último PC + 4.
+Orden en pc_unit: rst, después en = 0 (se mantiene), después salto tomado (redirect), después stall o fetch_stop (se mantiene) y por último PC + 4. fetch_stop viene de la hazard unit y vale 1 desde que el HALT llega a ID.
 
-Por qué redirect le gana a halt y a stall: si EX toma un salto, las instrucciones que están detrás son del camino equivocado. Un HALT o un stall en ese camino no tienen que frenar el PC, porque se van a descartar.
+Por qué redirect le gana a fetch_stop y a stall: si EX toma un salto, las instrucciones que están detrás son del camino equivocado. Un HALT o un stall en ese camino no tienen que frenar el PC, porque se van a descartar.
 
 
 ## 6. Pausa sin tocar el clock
@@ -80,4 +80,4 @@ Cuando ID ve un HALT, la hazard unit activa fetch_stop: el PC queda fijo e IF/ID
 
 ## 10. Pruebas
 
-tb/tb_cpu.v corre programs/pipeline.hex en el pipeline completo, cargándolo por el puerto de debug de la memoria de programa. tb/tb_top.v prueba la carga (L), la lectura (P) y la reprogramación por UART.
+tb/tb_cpu.v corre el programa de programs/pipeline.s en el pipeline completo (las palabras están escritas en el testbench), cargándolo por el puerto de debug de la memoria de programa. tb/tb_top.v prueba la carga (L), la lectura (P) y la reprogramación por UART.

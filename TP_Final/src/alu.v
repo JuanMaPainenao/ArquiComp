@@ -1,23 +1,6 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date: 08/26/2026 08:51:24 PM
-// Design Name: 
-// Module Name: Alu
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
+// alu.v - ALU del TP1 adaptada a RV32I: hace la operacion que indica alu_ctrl
+// (codigos en docs/ex.md). Los shifts usan solo B[4:0].
 
 
 module alu #(
@@ -27,8 +10,8 @@ module alu #(
 (
     input [NB_DATA-1:0] A,
     input [NB_DATA-1:0] B,
-    input [NB_OP_CODE-1:0] OP,
-    output reg [NB_DATA-1:0] RES
+    input [NB_OP_CODE-1:0] alu_ctrl,
+    output reg [NB_DATA-1:0] alu_result
     );
     localparam OP_ADD  = 4'b0000;
     localparam OP_SUB  = 4'b1000;
@@ -44,19 +27,19 @@ module alu #(
 
     
     always @(*)begin
-        case (OP)
-            OP_ADD: RES = A+B;
-            OP_SUB: RES = A-B;
-            OP_AND: RES = A&B;
-            OP_OR:  RES = A|B;
-            OP_XOR: RES = A^B;
-            OP_SRL: RES = A >> B[4:0];
-            OP_SRA: RES = $signed(A) >>> B[4:0];
-            OP_SLL: RES = A << B[4:0];
-            OP_SLT: RES = ($signed(A) < $signed(B)) ? 1 : 0;
-            OP_SLTU: RES = (A < B) ? 1 : 0;
-            OP_PASS: RES = B;
-            default: RES = {NB_DATA{1'b0}};
+        case (alu_ctrl)
+            OP_ADD: alu_result = A+B;
+            OP_SUB: alu_result = A-B;
+            OP_AND: alu_result = A&B;
+            OP_OR:  alu_result = A|B;
+            OP_XOR: alu_result = A^B;
+            OP_SRL: alu_result = A >> B[4:0];
+            OP_SRA: alu_result = $signed(A) >>> B[4:0];
+            OP_SLL: alu_result = A << B[4:0];
+            OP_SLT: alu_result = ($signed(A) < $signed(B)) ? 1 : 0;
+            OP_SLTU: alu_result = (A < B) ? 1 : 0;
+            OP_PASS: alu_result = B;
+            default: alu_result = {NB_DATA{1'b0}};
          endcase
     end
 

@@ -112,7 +112,9 @@ programs/pipeline.s tiene un caso de cada riesgo: forwarding desde EX/MEM y MEM/
 
 programs/instrucciones.s agrega saltos hacia atrás y dependencias entre las 32 instrucciones.
 
+Por separado: tb/tb_hazard_unit.v (16 casos: load use, falsos load use, salto tomado, HALT, fetch frenado, HALT descartado y stall con fetch frenado) y tb/tb_forwarding_unit.v (11 casos: cada camino, prioridad, x0 y sin reg_write).
+
 
 ## Pendiente
 
-1. Testbenches unitarios tb/tb_hazard_unit.v y tb/tb_forwarding_unit.v.
+Nada pendiente en riesgos.

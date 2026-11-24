@@ -1,14 +1,6 @@
 `timescale 1ns / 1ps
-// ============================================================================
-// tb_ex.v - Testbench autoverificante de la etapa EX (ex.v + alu.v)
-//
-// EX es combinacional: se cargan las entradas, se espera 1 ns y se comparan
-// las salidas con lo esperado. Sin forwarding (fwd_a = fwd_b = 00).
-//   1. ALU: las 11 operaciones, incluidos los casos de signo y de shifts.
-//   2. Mux de B (alu_src): rs2 vs imm.
-//   3. Stores: alu_result = direccion, store_data = rs2.
-//   4. Saltos: beq/bne tomados y no tomados, jal, jalr, y no-saltos.
-// ============================================================================
+// tb_ex.v - Prueba EX (ex.v + alu.v) sin forwarding: las operaciones de la ALU,
+// el mux de B, un store y los saltos tomados y no tomados.
 module tb_ex;
 
     // Codigos de alu_ctrl ({instr[30], funct3}) - iguales a los de alu.v
@@ -22,7 +14,7 @@ module tb_ex;
     reg  [3:0]  alu_ctrl;
 
     wire [31:0] alu_result, store_data, redirect_target;
-    wire        redirect, flush;
+    wire        redirect;
 
     integer errores = 0;
     integer casos   = 0;
@@ -38,15 +30,14 @@ module tb_ex;
         .branch          (branch),
         .jump            (jump),
         .jalr            (jalr),
-        .ex_mem_result   (32'd0),
-        .mem_wb_data     (32'd0),
+        .exmem_alu_result(32'd0),
+        .wb_write_data   (32'd0),
         .fwd_a           (2'b00),
         .fwd_b           (2'b00),
         .alu_result      (alu_result),
         .store_data      (store_data),
         .redirect        (redirect),
-        .redirect_target (redirect_target),
-        .flush           (flush)
+        .redirect_target (redirect_target)
     );
 
     // Pone todas las entradas en un estado neutro (instruccion que no salta)
@@ -85,11 +76,11 @@ module tb_ex;
             alu_src = jr;                   // jalr usa imm en la ALU, como lo pone ID
             #1;
             casos = casos + 1;
-            if (redirect !== esp_taken || flush !== esp_taken ||
+            if (redirect !== esp_taken ||
                 (esp_taken && redirect_target !== esp_target)) begin
                 errores = errores + 1;
-                $display("FALLA %0s: redirect=%b flush=%b target=%0d (esperado %b, %0d)",
-                         nombre, redirect, flush, redirect_target, esp_taken, esp_target);
+                $display("FALLA %0s: redirect=%b target=%0d (esperado %b, %0d)",
+                         nombre, redirect, redirect_target, esp_taken, esp_target);
             end
         end
     endtask

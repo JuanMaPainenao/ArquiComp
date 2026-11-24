@@ -244,16 +244,16 @@ La consigna deja esto a criterio del grupo. Cada una tiene que quedar justificad
 
 ## 13. Checklist de entregables
 
-- [ ] RTL del pipeline de 5 etapas con las 32 instrucciones.
-- [ ] Manejo de riesgos de datos y de control.
-- [ ] Memoria de programa escribible por UART (sin resintetizar).
-- [ ] Instrucción HALT definida, con drenado del pipeline.
-- [ ] Debug Unit: comandos de carga, modo continuo y paso a paso.
-- [ ] Debug Unit: envío de los 32 registros, registros de pipeline y memoria de datos usada.
-- [ ] Ensamblador asm → código máquina.
-- [ ] Interfaz PC (CLI/TUI/GUI).
-- [ ] Testbenches por módulo y de integración.
-- [ ] Reportes de timing en Vivado: camino crítico, skew, frecuencia óptima aplicada.
+- [x] RTL del pipeline de 5 etapas con las 32 instrucciones.
+- [x] Manejo de riesgos de datos y de control.
+- [x] Memoria de programa escribible por UART (sin resintetizar).
+- [x] Instrucción HALT definida, con drenado del pipeline.
+- [x] Debug Unit: comandos de carga, modo continuo y paso a paso.
+- [x] Debug Unit: envío de los 32 registros, registros de pipeline y memoria de datos usada.
+- [x] Ensamblador asm → código máquina.
+- [x] Interfaz PC (CLI/TUI/GUI).
+- [x] Testbenches por módulo y de integración.
+- [ ] Reportes de timing en Vivado: camino crítico, skew, frecuencia óptima aplicada. (Camino crítico y skew en docs/timing.md; falta buscar la frecuencia máxima.)
 - [ ] Informe: decisiones de diseño justificadas + respuestas P1–P8.
 
 ---

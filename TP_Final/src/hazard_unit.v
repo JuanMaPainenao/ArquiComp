@@ -1,28 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// hazard_unit.v - Deteccion de riesgos: stalls, flushes y HALT
-//
-// 1. Load-use: la instruccion en EX es un load y la de ID usa su rd.
-//    El dato recien sale de memoria al final de MEM, asi que hay que esperar
-//    1 ciclo: PC e IF/ID se mantienen (stall) y a ID/EX entra una burbuja.
-//    Despues, la forwarding_unit adelanta el dato desde WB.
-//
-// 2. Salto tomado (redirect, viene de EX): las 2 instrucciones que entraron
-//    detras son del camino equivocado -> flush de IF/ID y de ID/EX.
-//    Le gana al stall: la instruccion frenada tambien se descarta.
-//
-// 3. HALT: cuando hay un HALT en ID se deja de buscar instrucciones hasta el
-//    reset (fetch_stopped). El PC no avanza e IF/ID recibe burbujas; el HALT
-//    sigue solo hasta WB, donde se levanta halted con el pipeline vacio.
-//    Hace falta un registro porque al ciclo siguiente el HALT ya paso a EX
-//    (halt_id vuelve a 0) y, sin el, el PC arrancaria de nuevo.
-//
-// Conexiones:
-//   stall       -> pc_unit.stall, if_id.stall
-//   fetch_stop  -> pc_unit.halt
-//   flush_if_id -> if_id.flush
-//   flush_id_ex -> id_ex.flush
-// ============================================================================
+// hazard_unit.v - Load use (stall y burbuja), salto tomado (flush) y HALT
+// (frena el fetch hasta el reset). Ver docs/riesgos.md.
 module hazard_unit(
     input  wire       clk,
     input  wire       rst,

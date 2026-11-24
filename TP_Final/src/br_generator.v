@@ -6,18 +6,18 @@ module br_generator #(
     parameter DIV = 164
 )(
     input clk,
-    output reg o_br = 0
+    output reg o_br_tick = 0
     );
     reg[7:0] counter = 0;
 
     always @(posedge clk) begin
 
         if (counter == DIV - 1) begin
-            o_br <= 1;
+            o_br_tick <= 1;
             counter <= 0;
         end
         else begin
-            o_br <= 0;
+            o_br_tick <= 0;
             counter <= counter + 1;
         end
     end

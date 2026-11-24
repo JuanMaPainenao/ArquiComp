@@ -1,6 +1,6 @@
 # Debug Unit: decisiones de diseño
 
-Archivos: src/debug_unit.v, src/top.v, src/br_generator.v, src/rx_uart.v, src/tx_uart.v, tb/tb_top.v, scripts/du.ps1, scripts/smoke_test.ps1
+Archivos: src/debug_unit.v, src/top.v, src/br_generator.v, src/rx_uart.v, src/tx_uart.v, tb/tb_debug_unit.v, tb/tb_top.v, scripts/du.ps1, scripts/smoke_test.ps1
 
 La Debug Unit es el puente entre la PC y el procesador. Recibe comandos por UART, carga el programa en la memoria de programa, controla la ejecución (continuo o paso a paso) y devuelve el estado: PC, latches, los 32 registros y la memoria de datos usada.
 
@@ -77,7 +77,7 @@ Formato: 1 byte de estado (bit 0 = halted) y después palabras de 32 bits en lit
 |---|---|
 | 0 | PC (etapa IF) |
 | 1 | M: cantidad de palabras de memoria de datos que vienen al final |
-| 2 a 21 | 20 palabras de latches y señales de riesgo (tabla en cpu.v) |
+| 2 a 21 | 20 palabras de latches y señales de riesgo (tabla de abajo) |
 | 22 a 53 | x0 a x31 |
 | 54 a 54 + M - 1 | memoria de datos usada, palabras 0 a M - 1 |
 
@@ -85,7 +85,27 @@ Elección: la Debug Unit no sabe qué es cada palabra. Pide la palabra dump_idx 
 
 Por qué: para agregar algo al dump solo se cambia el multiplexor del top y el programa de la PC; la FSM de la Debug Unit no se toca. Un dump es de tamaño fijo salvo la memoria, así que la PC sabe cuánto leer: primero las 54 palabras fijas y después M palabras.
 
-Latches: de cada latch se manda pc4 (identifica la instrucción, y 0 indica burbuja), los datos (operandos, inmediato, resultado de la ALU, dato leído) y las señales de control empaquetadas en una palabra. El latch 15 (palabra 17 del dump) tiene las señales de riesgo del ciclo: stall, flushes, redirect, fetch_stop, fwd_a, fwd_b y halted.
+Latches: de cada latch se manda pc4, los datos y las señales de control empaquetadas en una palabra. pc4 identifica la instrucción (es la de la dirección pc4 - 4), y pc4 = 0 indica una burbuja. El multiplexor está al final de cpu.v (entrada dbg_latch_sel).
+
+| Latch | Contenido | Latch | Contenido |
+|---|---|---|---|
+| 0 | IF: instrucción leída | 10 | EX/MEM control |
+| 1 | IF/ID instrucción | 11 | MEM/WB pc4 |
+| 2 | IF/ID pc4 | 12 | MEM/WB alu_result |
+| 3 | ID/EX pc4 | 13 | MEM/WB load_data |
+| 4 | ID/EX rs1_data | 14 | MEM/WB control |
+| 5 | ID/EX rs2_data | 15 | Riesgos |
+| 6 | ID/EX imm | 16 | EX: resultado de la ALU |
+| 7 | ID/EX control | 17 | EX: destino del salto |
+| 8 | EX/MEM pc4 | 18 | WB: dato a escribir en rd |
+| 9 | EX/MEM alu_result | 19 | EX/MEM store_data |
+
+El latch k es la palabra k + 2 del dump.
+
+Bits de las palabras de control:
+- ID/EX: [31:27] rd, [26:22] rs1, [21:17] rs2, [16:14] funct3, [13] funct7[5], [12] reg_write, [11] alu_src, [10:9] alu_op, [8] mem_read, [7] mem_write, [6:5] wb_sel, [4] branch, [3] jump, [2] jalr, [1] halt.
+- EX/MEM y MEM/WB: [31:27] rd, [26:24] funct3, [23] reg_write, [22] mem_read, [21] mem_write, [20:19] wb_sel, [18] halt. En MEM/WB funct3, mem_read y mem_write van en 0 porque ese latch no los guarda.
+- Riesgos (lo que va a pasar en el próximo flanco): [0] stall, [1] flush_if_id, [2] flush_id_ex, [3] redirect, [4] fetch_stop, [6:5] fwd_a, [8:7] fwd_b, [9] halted.
 
 
 ## 8. Memoria de datos usada
@@ -98,6 +118,8 @@ Por qué: es un registro y una comparación, y el dump queda como una lista de p
 ## 9. Pruebas
 
 tb/tb_top.v prueba el sistema completo por UART: carga (L), dump (D), paso a paso (S), continuo (R), reprogramación (que borra los registros), comando inválido (?) y lectura de la memoria de programa (P). Usa la primitiva MMCM de clk_gen.v, así que se simula en Vivado con la librería unisims, no con iverilog.
+
+tb/tb_debug_unit.v prueba solo la FSM, sin UART, y corre con iverilog: maneja rx_data y rx_done directo y simula el tx_uart. Chequea cada comando, que S habilite el procesador exactamente 1 ciclo, que R lo habilite hasta halted y que después del HALT un S no ejecute nada.
 
 En la placa, scripts/smoke_test.ps1 hace la misma secuencia con el programa de programs/ejemplo.s y chequea los resultados.
 

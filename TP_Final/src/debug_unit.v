@@ -1,36 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// debug_unit.v - Debug Unit: puente entre la UART y el procesador
-//
-// Protocolo (PC -> FPGA), un byte de comando seguido de sus argumentos:
-//   'L' (0x4C) N_lo N_hi  w0b0 w0b1 w0b2 w0b3  w1b0 ...
-//        Carga N instrucciones (little-endian) desde la direccion 0 de la
-//        memoria de programa. Al terminar resetea el procesador y responde 'K'.
-//   'S' (0x53) Paso a paso: habilita el procesador UN ciclo y manda un dump.
-//   'R' (0x52) Continuo: habilita el procesador hasta que cpu_halted = 1 y
-//        manda un dump.
-//   'D' (0x44) Manda un dump sin ejecutar nada.
-//   'X' (0x58) Resetea el procesador (PC, pipeline) y responde 'K'.
-//   'P' (0x50) N_lo N_hi
-//        Lee las primeras N palabras de la memoria de programa y las manda
-//        en little-endian (4*N bytes). Sirve para verificar lo cargado.
-//        Con N = 0 responde 'K'.
-//   Cualquier otro byte -> responde '?'.
-//
-// Dump (FPGA -> PC): 1 byte de estado (bit0 = halted) + dump_words palabras
-// de 32 bits en little-endian. dump_words es una entrada (no un parametro)
-// para que el top pueda mandar solo la memoria de datos usada. Que palabra es cada indice lo decide el top con
-// un mux sobre dump_idx (PC, registros, latches, memoria de datos...). Asi la
-// Debug Unit no cambia cuando agregamos cosas para ver.
-//
-// Decisiones de diseno:
-//   - El clock nunca se toca: se controla el procesador con cpu_en.
-//   - Mientras se carga un programa cpu_en = 0, y al final se pulsa cpu_rst
-//     para que el PC vuelva a 0 y el pipeline arranque vacio (reprogramacion
-//     dinamica sin resintetizar).
-//   - tx_start se genera combinacional junto con br_tick porque tx_uart solo
-//     mira i_tx_start en un ciclo con i_br = 1.
-// ============================================================================
+// debug_unit.v - Recibe comandos por UART, carga la memoria de programa,
+// maneja cpu_en (paso a paso o continuo) y manda el dump. Ver docs/debug_unit.md.
 module debug_unit #(
     parameter ADDR_W = 8,                  // bits de direccion de instr_mem
     parameter DUMP_W = 8                   // ancho de dump_idx

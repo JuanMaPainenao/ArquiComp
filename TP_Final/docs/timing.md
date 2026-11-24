@@ -56,7 +56,7 @@ Recorrido:
 1. reg_write de EX/MEM entra a la forwarding unit, que decide si adelantar el dato.
 2. El mux de forwarding elige el operando B de EX y después el mux de alu_src.
 3. El operando pasa por la ALU (la señal B[3], que maneja los shifts, tiene fanout 119).
-4. El resultado de la ALU (latch 16 del dump, "EX: resultado de la ALU") pasa por el mux de latches de cpu.v y el mux del dump de top.v.
+4. El resultado de la ALU (latch 16, "EX: resultado de la ALU", ver debug_unit.md) pasa por el mux de latches de cpu.v y el mux del dump de top.v.
 5. Llega a tx_data de la Debug Unit.
 
 Es decir, el camino crítico del procesador es forwarding, ALU y resultado, que es el camino típico de un pipeline de 5 etapas. En este caso termina en la Debug Unit porque el resultado de la ALU también se manda en el dump, y eso le suma 3 LUTs de multiplexores.

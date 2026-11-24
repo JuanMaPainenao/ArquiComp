@@ -5,10 +5,10 @@ module tx_uart #(
     parameter SB_TICK = 16
 )(
     input clk,
-    input i_br,
-    input i_reset,
+    input i_br_tick,
+    input i_rst,
     input i_tx_start,
-    input [NB_DATA-1:0] i_data,
+    input [NB_DATA-1:0] i_tx_data,
     output reg o_tx,
     output reg o_tx_done
 );
@@ -25,7 +25,7 @@ module tx_uart #(
     reg tx_reg, next_tx_reg; 
 
     always @(posedge clk) begin
-        if (i_reset) begin
+        if (i_rst) begin
             state_tx  <= idle;
             cont      <= 0;
             cont_bits <= 0;
@@ -52,18 +52,18 @@ module tx_uart #(
 
         case (state_tx)
             idle: begin
-                if (i_br==1) begin
+                if (i_br_tick==1) begin
                     next_tx_reg = 1'b1;
                     if (i_tx_start) begin
                         next_cont     = 0;
-                        next_data_reg = i_data;
+                        next_data_reg = i_tx_data;
                         next_state_tx = start;
                     end
                 end
             end
 
             start: begin
-                if (i_br==1) begin
+                if (i_br_tick==1) begin
                     next_tx_reg = 1'b0;
                     if (cont == 4'd15) begin
                         next_cont      = 0;
@@ -78,7 +78,7 @@ module tx_uart #(
             end
 
             data: begin
-                if (i_br == 1) begin
+                if (i_br_tick == 1) begin
                                  next_tx_reg = data_reg[0];
                     if (cont == 4'd15) begin
                         next_cont     = 0;
@@ -97,7 +97,7 @@ module tx_uart #(
             end
 
             stop: begin
-                if (i_br == 1) begin
+                if (i_br_tick == 1) begin
                     next_tx_reg = 1'b1;
                     if (cont == SB_TICK-1) begin
                         next_cont     = 0;

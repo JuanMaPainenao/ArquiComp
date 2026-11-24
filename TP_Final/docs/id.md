@@ -103,5 +103,5 @@ HALT: cuando ID ve un HALT y no hay un salto tomado que lo descarte, un registro
 
 ## 12. Pruebas
 
-tb/tb_imm_gen.v (24 casos) y tb/tb_reg_file.v prueban los módulos por separado. tb/tb_cpu.v prueba el pipeline completo, incluidos los riesgos.
+tb/tb_imm_gen.v (24 casos), tb/tb_reg_file.v, tb/tb_control_unit.v (12 opcodes, incluidos HALT y dos no soportados), tb/tb_alu_control.v (23 casos) y tb/tb_hazard_unit.v (16 casos) prueban los módulos por separado. tb/tb_cpu.v prueba el pipeline completo, incluidos los riesgos.
 

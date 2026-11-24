@@ -114,11 +114,9 @@ Igual que en EX, mem.v declara solo lo que usa. rd, pc4, reg_write, wb_sel y hal
 
 ## 12. Pruebas
 
-Se probó con un testbench autoverificante: sw, sh y sb (sb modifica un solo byte), los 5 loads con y sin signo, max_addr (sube con los stores y no baja con uno más bajo), el puerto de debug, que con en = 0 no se escriba, la vuelta de las direcciones al pasar el final de la memoria (con 1 KB) y que rst borre la memoria y max_addr.
+tb/tb_mem.v, autoverificante: sw, sh y sb (sb modifica un solo byte), los 5 loads con y sin signo, max_addr (sube con los stores y no baja con uno más bajo), el puerto de debug, que con en = 0 no se escriba, la vuelta de las direcciones al pasar el final de la memoria (con 1 KB) y que rst borre la memoria y max_addr.
 
 
 ## Pendiente
 
-1. Pasar el testbench a tb/tb_mem.v.
-
-El latch MEM/WB está en wb.md, y la conexión de max_addr y del puerto de debug al dump en debug_unit.md.
+Nada pendiente en MEM. El latch MEM/WB está en wb.md, y la conexión de max_addr y del puerto de debug al dump en debug_unit.md.

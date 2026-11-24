@@ -1,25 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// instr_mem.v - Memoria de instrucciones (programa)
-//
-// Dos puertos:
-//   - Puerto del pipeline (etapa IF): solo lectura, ASINCRONICA. El PC entra y
-//     la instruccion sale en el mismo ciclo, como en el pipeline del libro.
-//   - Puerto de debug (Debug Unit / UART): escritura sincronica para cargar el
-//     programa sin resintetizar, y lectura para verificar lo cargado.
-//
-// Decision de diseno: lectura asincronica -> Vivado la implementa como RAM
-// distribuida (LUTRAM). Para pocas instrucciones (DEPTH=256 -> 1 KB) es mas
-// simple que una BRAM, cuya lectura sincronica obliga a direccionar con el
-// proximo PC y a tener cuidado con los stalls.
-//
-// Direccionamiento: el PC es una direccion en BYTES y las instrucciones estan
-// alineadas a 4, asi que se usa pc[ADDR_W+1:2] como indice de palabra.
-// El puerto de debug usa directamente un indice de PALABRA.
-//
-// Contenido inicial = 0. Como 0x00000000 se decodifica como HALT, si el PC
-// llega a una zona no programada el procesador se detiene solo.
-// ============================================================================
+// instr_mem.v - Memoria de programa: lectura asincronica para IF y puerto de
+// debug para cargarla por UART. Fuera de rango lee 0 (HALT). Ver docs/if.md.
 module instr_mem #(
     parameter ADDR_W = 8                   // 2^8 = 256 instrucciones
 )(

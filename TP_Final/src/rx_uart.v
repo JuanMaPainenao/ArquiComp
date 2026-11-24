@@ -1,23 +1,5 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date: 09/09/2026 10:11:25 PM
-// Design Name: 
-// Module Name: rx_uart
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
+// rx_uart.v - Receptor UART 8N1 del TP2, con 16 ticks de br_generator por bit.
 
 
 module rx_uart#(
@@ -26,10 +8,10 @@ module rx_uart#(
 )
 (
         input clk,
-        input i_br,
+        input i_br_tick,
         input i_rx,
-        input i_reset,
-        output reg [NB_DATA-1:0] o_dout,
+        input i_rst,
+        output reg [NB_DATA-1:0] o_rx_data,
         output reg o_rx_done
 
     );
@@ -47,7 +29,7 @@ module rx_uart#(
     reg rx_done_tick;
     
     always @(posedge clk) begin
-        if (i_reset) begin
+        if (i_rst) begin
             state_rx <= idle;
             cont_ticks <= 4'b0;
             cont_bits <= 3'b0;
@@ -65,7 +47,7 @@ module rx_uart#(
 
     always @(posedge clk) begin
         if (rx_done_tick)
-            o_dout <= shift_reg;
+            o_rx_data <= shift_reg;
     end
 
     
@@ -77,7 +59,7 @@ module rx_uart#(
         rx_done_tick    = 1'b0;
         case(state_rx)
             idle:begin
-                if (i_br==1) begin
+                if (i_br_tick==1) begin
                     if (i_rx == 0)begin
                         next_state_rx = start;
                         next_cont_ticks = 4'b0;
@@ -88,7 +70,7 @@ module rx_uart#(
                 end
             end
             start:begin
-                if (i_br==1) begin
+                if (i_br_tick==1) begin
                     if(cont_ticks == 4'b0111) begin
                         next_cont_ticks = 4'b0;
                         next_state_rx = data;
@@ -100,7 +82,7 @@ module rx_uart#(
                 end
             end
             data:begin
-                if (i_br==1) begin
+                if (i_br_tick==1) begin
                     if(cont_ticks == 4'b1111) begin
                         next_cont_ticks = 4'b0;
                         next_shift_reg = {i_rx, shift_reg[NB_DATA-1:1]};
@@ -117,7 +99,7 @@ module rx_uart#(
                 end
             end
             stop:begin
-                if (i_br ==1) begin
+                if (i_br_tick ==1) begin
                     if(cont_ticks == (SB_TICK - 1)) begin
                         rx_done_tick = 1;
                         next_state_rx = idle;

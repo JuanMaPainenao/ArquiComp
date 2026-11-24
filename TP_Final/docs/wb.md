@@ -48,7 +48,7 @@ Por qué: el banco de registros ya ignora las escrituras a x0. La forwarding uni
 
 ## 6. Hacia dónde va el dato
 
-El dato elegido va al banco de registros (con reg_write y rd), y también a EX como mem_wb_data para el forwarding.
+El dato elegido va al banco de registros (con reg_write y rd), y también a EX como wb_write_data para el forwarding.
 
 Gracias al bypass del banco de registros, una instrucción que está en ID lee el valor que WB escribe en ese mismo ciclo.
 
@@ -66,9 +66,9 @@ Consecuencia: halted aparece un ciclo después de que el HALT llega a WB. En ese
 
 ## 8. Pruebas
 
-wb.v se probó con un testbench temporal: los cuatro valores de wb_sel, que rd y reg_write pasen directo, y que halted no suba con en = 0, se trabe en 1 y baje con rst. tb/tb_cpu.v prueba la etapa dentro del pipeline completo.
+tb/tb_wb.v, autoverificante: los cuatro valores de wb_sel, que rd y reg_write pasen directo, y que halted no suba con en = 0, se trabe en 1 y baje con rst. tb/tb_cpu.v prueba la etapa dentro del pipeline completo.
 
 
 ## Pendiente
 
-1. Pasar el testbench de wb.v a tb/tb_wb.v.
+Nada pendiente en WB.

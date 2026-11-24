@@ -121,9 +121,9 @@ module cpu #(
     wire        memwb_halt;
 
     // WB
-    wire [31:0] wb_data;
+    wire [31:0] wb_write_data;
     wire [4:0]  wb_rd;
-    wire        wb_we;
+    wire        wb_reg_write;
 
     // Hazards
     wire [1:0]  fwd_a;
@@ -171,11 +171,11 @@ module cpu #(
         .rst             (rst),
         .en              (en),
         .stall           (stall),
-        .halt            (fetch_stop),
+        .fetch_stop            (fetch_stop),
         .redirect        (ex_redirect),
         .redirect_target (ex_redirect_target),
         .pc              (pc),
-        .pc_plus4        (pc4)
+        .pc4             (pc4)
     );
 
     instr_mem #(
@@ -210,9 +210,9 @@ module cpu #(
         .clk          (clk),
         .rst          (rst),
         .en           (en),
-        .wb_we        (wb_we),
+        .wb_reg_write        (wb_reg_write),
         .wb_rd        (wb_rd),
-        .wb_data      (wb_data),
+        .wb_write_data      (wb_write_data),
         .instr        (ifid_instr),
         .rd           (id_rd),
         .funct3       (id_funct3),
@@ -309,15 +309,14 @@ module cpu #(
         .branch          (idex_branch),
         .jump            (idex_jump),
         .jalr            (idex_jalr),
-        .ex_mem_result   (exmem_alu_result),
-        .mem_wb_data     (wb_data),
+        .exmem_alu_result   (exmem_alu_result),
+        .wb_write_data     (wb_write_data),
         .fwd_a           (fwd_a),
         .fwd_b           (fwd_b),
         .alu_result      (ex_alu_result),
         .store_data      (ex_store_data),
         .redirect        (ex_redirect),
-        .redirect_target (ex_redirect_target),
-        .flush           ()
+        .redirect_target (ex_redirect_target)
     );
 
     // ======================= EX/MEM =======================
@@ -398,36 +397,15 @@ module cpu #(
         .reg_write_in   (memwb_reg_write),
         .wb_sel_in      (memwb_wb_sel),
         .halt_in        (memwb_halt),
-        .write_data_out (wb_data),
+        .write_data_out (wb_write_data),
         .rd_out         (wb_rd),
-        .reg_write_out  (wb_we),
+        .reg_write_out  (wb_reg_write),
         .halted         (halted)
     );
 
     // ======================= Debug: latches =======================
-    // Cada latch guarda pc4 (PC + 4 de la instruccion que tiene). Una burbuja
-    // (rst / flush) deja pc4 = 0, asi que en la PC: pc4 = 0 -> burbuja, si no
-    // la instruccion es la de la direccion pc4 - 4.
-    //
-    //  0 IF : instruccion leida de imem      10 EX/MEM ctrl (ver abajo)
-    //  1 IF/ID instr                         11 MEM/WB pc4
-    //  2 IF/ID pc4                           12 MEM/WB alu_result
-    //  3 ID/EX pc4                           13 MEM/WB load_data
-    //  4 ID/EX rs1_data                      14 MEM/WB ctrl (ver abajo)
-    //  5 ID/EX rs2_data                      15 riesgos (ver abajo)
-    //  6 ID/EX imm                           16 EX: resultado de la ALU
-    //  7 ID/EX ctrl (ver abajo)              17 EX: destino del salto
-    //  8 EX/MEM pc4                          18 WB: dato a escribir en rd
-    //  9 EX/MEM alu_result / 19 EX/MEM store_data
-    //
-    // ID/EX ctrl: [31:27] rd [26:22] rs1 [21:17] rs2 [16:14] funct3
-    //   [13] funct7[5] [12] reg_write [11] alu_src [10:9] alu_op [8] mem_read
-    //   [7] mem_write [6:5] wb_sel [4] branch [3] jump [2] jalr [1] halt
-    // EX/MEM y MEM/WB ctrl: [31:27] rd [26:24] funct3 [23] reg_write
-    //   [22] mem_read [21] mem_write [20:19] wb_sel [18] halt
-    // Riesgos (combinacional, lo que va a pasar en el proximo flanco):
-    //   [0] stall [1] flush_if_id [2] flush_id_ex [3] redirect [4] fetch_stop
-    //   [6:5] fwd_a [8:7] fwd_b [9] halted
+    // Elige que latch o senal de riesgo se manda en el dump. La tabla de
+    // indices y de bits esta en docs/debug_unit.md (seccion 7).
     always @(*) begin
         case (dbg_latch_sel)
             5'd0: begin
@@ -494,7 +472,7 @@ module cpu #(
                 dbg_latch_data = ex_redirect_target;
             end
             5'd18: begin
-                dbg_latch_data = wb_data;
+                dbg_latch_data = wb_write_data;
             end
             5'd19: begin
                 dbg_latch_data = exmem_store_data;

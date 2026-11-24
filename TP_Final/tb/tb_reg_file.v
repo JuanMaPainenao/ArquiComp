@@ -1,18 +1,11 @@
 `timescale 1ns/1ps
-// ============================================================================
-// tb_reg_file.v - Testbench autoverificante del banco de registros
-//   1. Despues del reset todo vale 0
-//   2. Escritura y lectura por rs1, rs2 y debug
-//   3. x0 no se escribe
-//   4. Bypass: leer el registro que se esta escribiendo devuelve el dato nuevo
-//   5. Con en = 0 no se escribe
-//   6. rst vuelve todo a 0
-// ============================================================================
+// tb_reg_file.v - Prueba el banco de registros: reset, escritura y lectura, x0,
+// bypass, en = 0 y rst.
 module tb_reg_file;
 
-    reg         clk = 0, rst = 1, en = 1, we = 0;
+    reg         clk = 0, rst = 1, en = 1, reg_write = 0;
     reg  [4:0]  rs1 = 0, rs2 = 0, rd = 0, dbg_addr = 0;
-    reg  [31:0] rd_data = 0;
+    reg  [31:0] write_data = 0;
     wire [31:0] rs1_data, rs2_data, dbg_data;
 
     integer errores = 0;
@@ -21,7 +14,7 @@ module tb_reg_file;
     reg_file dut (
         .clk(clk), .rst(rst), .en(en),
         .rs1(rs1), .rs2(rs2), .rs1_data(rs1_data), .rs2_data(rs2_data),
-        .we(we), .rd(rd), .rd_data(rd_data),
+        .reg_write(reg_write), .rd(rd), .write_data(write_data),
         .dbg_addr(dbg_addr), .dbg_data(dbg_data)
     );
 
@@ -38,8 +31,8 @@ module tb_reg_file;
 
     task write(input [4:0] r, input [31:0] d);
         begin
-            @(negedge clk); we = 1; rd = r; rd_data = d;
-            @(negedge clk); we = 0;
+            @(negedge clk); reg_write = 1; rd = r; write_data = d;
+            @(negedge clk); reg_write = 0;
         end
     endtask
 
@@ -68,15 +61,15 @@ module tb_reg_file;
         rs1 = 0; dbg_addr = 0; #1;
         check("x0 rs1", rs1_data, 0);
         check("x0 dbg", dbg_data, 0);
-        @(negedge clk); we = 1; rd = 0; rd_data = 32'h1234; rs1 = 0; #1;
+        @(negedge clk); reg_write = 1; rd = 0; write_data = 32'h1234; rs1 = 0; #1;
         check("x0 bypass", rs1_data, 0);
-        @(negedge clk); we = 0;
+        @(negedge clk); reg_write = 0;
 
         $display("--- 4. Bypass");
-        @(negedge clk); we = 1; rd = 5; rd_data = 32'hCAFE_0005; rs1 = 5; rs2 = 5; #1;
+        @(negedge clk); reg_write = 1; rd = 5; write_data = 32'hCAFE_0005; rs1 = 5; rs2 = 5; #1;
         check("bypass rs1", rs1_data, 32'hCAFE_0005);
         check("bypass rs2", rs2_data, 32'hCAFE_0005);
-        @(negedge clk); we = 0; #1;
+        @(negedge clk); reg_write = 0; #1;
         check("post bypass", rs1_data, 32'hCAFE_0005);
 
         $display("--- 5. en = 0");
@@ -84,9 +77,9 @@ module tb_reg_file;
         write(6, 32'hDEAD_0006);
         rs1 = 6; #1;
         check("en=0", rs1_data, 32'hA000_0006);
-        @(negedge clk); we = 1; rd = 6; rd_data = 32'hDEAD_0006; rs1 = 6; #1;
+        @(negedge clk); reg_write = 1; rd = 6; write_data = 32'hDEAD_0006; rs1 = 6; #1;
         check("en=0 sin bypass", rs1_data, 32'hA000_0006);
-        @(negedge clk); we = 0; en = 1;
+        @(negedge clk); reg_write = 0; en = 1;
 
         $display("--- 6. rst");
         @(negedge clk) rst = 1;

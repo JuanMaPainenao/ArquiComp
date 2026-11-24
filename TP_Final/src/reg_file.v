@@ -1,25 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// reg_file.v - Banco de registros RV32I (32 x 32 bits, x0 = 0)
-//
-// Puertos:
-//   - 2 lecturas asincronicas (rs1, rs2) para la etapa ID.
-//   - 1 escritura sincronica (rd) desde la etapa WB.
-//   - 1 lectura asincronica de debug para la Debug Unit (dump).
-//
-// Decisiones de diseno:
-//   - Escritura en el flanco de SUBIDA + bypass interno: si WB escribe el mismo
-//     registro que ID esta leyendo en ese ciclo, la lectura devuelve el dato
-//     nuevo. Es equivalente a "escribir en la primera mitad del ciclo" del
-//     libro, pero sin usar el flanco de bajada (que obligaria a que toda la
-//     escritura entre en medio periodo y achicaria la frecuencia maxima).
-//   - x0 nunca se escribe y siempre se lee 0 (tambien en el bypass).
-//   - La escritura se habilita con `en` (cpu_en de la Debug Unit): con el
-//     procesador pausado no cambia nada.
-//   - `rst` (cpu_rst) pone todos los registros en 0: al reprogramar, el
-//     programa nuevo arranca con un estado conocido. Por eso el banco se
-//     implementa con flip-flops (1024 FF) y no con RAM distribuida.
-// ============================================================================
+// reg_file.v - Banco de 32 registros (x0 = 0) con bypass de WB a ID y puerto
+// de debug. rst pone todo en 0. Ver docs/id.md.
 module reg_file (
     input  wire        clk,
     input  wire        rst,
@@ -32,9 +13,9 @@ module reg_file (
     output wire [31:0] rs2_data,
 
     // Escritura (WB)
-    input  wire        we,
+    input  wire        reg_write,
     input  wire [4:0]  rd,
-    input  wire [31:0] rd_data,
+    input  wire [31:0] write_data,
 
     // Debug
     input  wire [4:0]  dbg_addr,
@@ -43,7 +24,7 @@ module reg_file (
 
     reg [31:0] regs [0:31];
 
-    wire wr = en && we && (rd != 5'd0);
+    wire wr = en && reg_write && (rd != 5'd0);
 
     integer i;
     always @(posedge clk) begin
@@ -52,13 +33,13 @@ module reg_file (
                 regs[i] <= 32'd0;
         end
         else if (wr)
-            regs[rd] <= rd_data;
+            regs[rd] <= write_data;
     end
 
     // Lectura con bypass: si se esta escribiendo el registro que se lee,
     // se devuelve el dato que entra. regs[0] queda siempre en 0.
-    assign rs1_data = (wr && rd == rs1) ? rd_data : regs[rs1];
-    assign rs2_data = (wr && rd == rs2) ? rd_data : regs[rs2];
+    assign rs1_data = (wr && rd == rs1) ? write_data : regs[rs1];
+    assign rs2_data = (wr && rd == rs2) ? write_data : regs[rs2];
     assign dbg_data = regs[dbg_addr];
 
 endmodule

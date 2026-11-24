@@ -31,7 +31,7 @@ Opciones: que todas las señales que viajan hacia MEM y WB pasen por EX (entran 
 
 Elección: solo las que usa. rd, pc4, reg_write, mem_read, mem_write, wb_sel y halt van directo del latch ID/EX al latch EX/MEM en el módulo que conecta todo. rs1 y rs2 (números de registro) van a la unidad de forwarding.
 
-Por qué: EX queda con 19 puertos en vez de unos 30, el testbench es más simple y se evitan errores al cablear salidas que no hacen nada. El hardware que genera Vivado es el mismo con las dos opciones.
+Por qué: EX queda con 18 puertos en vez de unos 30, el testbench es más simple y se evitan errores al cablear salidas que no hacen nada. El hardware que genera Vivado es el mismo con las dos opciones.
 
 
 ## 4. ALU
@@ -109,7 +109,7 @@ Elección: la suma aparte dentro del always del destino.
 
 Por qué: queda explícito y no depende de que ID ponga bien alu_ctrl para jalr. El costo es un sumador más.
 
-redirect va a pc_unit y a la hazard unit, que es la que hace el flush de IF/ID e ID/EX (ver id.md). La salida flush de ex.v quedó sin conectar.
+redirect va a pc_unit y a la hazard unit, que es la que hace el flush de IF/ID e ID/EX (ver id.md). ex.v no tiene una salida de flush propia: la hazard unit la arma a partir de redirect.
 
 
 ## 11. Forwarding
@@ -147,7 +147,7 @@ No tiene flush ni stall. Los saltos solo descartan lo que está en IF/ID e ID/EX
 
 tb/tb_ex.v, autoverificante, 31 casos: las 11 operaciones de la ALU con los casos de signo y de shifts, el mux de B (incluido addi con imm 0), un store, y saltos tomados y no tomados de cada tipo.
 
-iverilog g2012 o tb_ex tb/tb_ex.v src/ex.v src/alu.v y después vvp tb_ex
+Se simula como los demás testbenches (ver README.md, sección 3).
 
 
 ## Pendiente

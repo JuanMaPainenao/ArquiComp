@@ -1,10 +1,6 @@
 `timescale 1ns / 1ps
-// ============================================================================
-// tb_cpu.v - Testbench autoverificante del pipeline (cpu.v) con
-// programs/pipeline.hex. Carga el programa por el puerto de debug de imem,
-// corre hasta halted y chequea registros y memoria de datos. Imprime en cada
-// ciclo que direccion hay en cada etapa (-- = burbuja).
-// ============================================================================
+// tb_cpu.v - Corre programs/pipeline.s en el pipeline completo y chequea registros
+// y memoria. Imprime que hay en cada etapa en cada ciclo (-- = burbuja).
 module tb_cpu;
 
     localparam N = 29;

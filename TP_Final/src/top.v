@@ -1,27 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// top.v - Top para la Basys 3: UART + Debug Unit + cpu (pipeline de 5 etapas)
-//
-// Layout del dump (palabras de 32 bits, indice = dump_idx), despues del byte
-// de estado (bit0 = halted):
-//   0              PC (etapa IF)
-//   1              M = palabras de memoria de datos que vienen al final
-//   2  .. 21       latches / riesgos (dbg_latch_sel 0..19, ver cpu.v)
-//   22 .. 53       x0 .. x31
-//   54 .. 54+M-1   memoria de datos usada: palabras 0 .. M-1
-//
-// "Memoria usada" = desde la direccion 0 hasta la palabra que contiene el
-// byte escrito mas alto (dmem_max_addr). Como minimo se manda la palabra 0.
-//
-// Memoria de datos: DMEM_ADDR_W = 8 (256 bytes). mem.v esta hecha con
-// flip-flops (rst la borra entera y la lectura es asincronica), asi que con
-// 1 KB no entra en la xc7a35t; con 256 bytes si.
-//
-// Clock: el pipeline no cierra timing a 100 MHz, asi que todo el sistema
-// corre con clk_sys = 80 MHz generado por el MMCM (clk_gen.v). El clock de la
-// placa solo entra al MMCM. Mientras el MMCM no engancha (locked = 0) todo
-// queda en reset.
-// ============================================================================
+// top.v - Top de la Basys 3: MMCM, UART, Debug Unit y procesador. El mux del
+// final elige la palabra del dump; el formato esta en docs/debug_unit.md.
 module top #(
     parameter IMEM_ADDR_W = 8,          // 256 instrucciones
     parameter DMEM_ADDR_W = 8,          // 256 bytes de datos
@@ -61,24 +40,24 @@ module top #(
 
     br_generator #(.DIV(BR_DIV)) u_br (
         .clk  (clk),
-        .o_br (br_tick)
+        .o_br_tick (br_tick)
     );
 
     rx_uart u_rx (
         .clk       (clk),
-        .i_br      (br_tick),
+        .i_br_tick      (br_tick),
         .i_rx      (i_rx),
-        .i_reset   (rst),
-        .o_dout    (rx_data),
+        .i_rst     (rst),
+        .o_rx_data    (rx_data),
         .o_rx_done (rx_done)
     );
 
     tx_uart u_tx (
         .clk        (clk),
-        .i_br       (br_tick),
-        .i_reset    (rst),
+        .i_br_tick       (br_tick),
+        .i_rst      (rst),
         .i_tx_start (tx_start),
-        .i_data     (tx_data),
+        .i_tx_data     (tx_data),
         .o_tx       (o_tx),
         .o_tx_done  (tx_done)
     );
@@ -125,14 +104,14 @@ module top #(
     wire cpu_rst = rst | du_cpu_rst;
 
     // ---------------- Procesador ----------------
-    wire [DUMP_W-1:0] lat_idx = dump_idx - LAT_BASE;
-    wire [DUMP_W-1:0] reg_idx = dump_idx - REG_BASE;
-    wire [DUMP_W-1:0] mem_idx = dump_idx - MEM_BASE;
+    wire [DUMP_W-1:0] dbg_latch_sel = dump_idx - LAT_BASE;
+    wire [DUMP_W-1:0] dbg_reg_addr = dump_idx - REG_BASE;
+    wire [DUMP_W-1:0] dbg_dmem_addr = dump_idx - MEM_BASE;
 
     wire [31:0] pc;
-    wire [31:0] reg_dbg_data;
-    wire [31:0] mem_dbg_data;
-    wire [31:0] lat_dbg_data;
+    wire [31:0] dbg_reg_data;
+    wire [31:0] dbg_dmem_data;
+    wire [31:0] dbg_latch_data;
 
     cpu #(
         .IMEM_ADDR_W (IMEM_ADDR_W),
@@ -146,14 +125,14 @@ module top #(
         .dbg_imem_addr  (imem_addr),
         .dbg_imem_wdata (imem_wdata),
         .dbg_imem_rdata (imem_rdata),
-        .dbg_reg_addr   (reg_idx[4:0]),
-        .dbg_reg_data   (reg_dbg_data),
-        .dbg_dmem_addr  (mem_idx[DMEM_ADDR_W-3:0]),
-        .dbg_dmem_data  (mem_dbg_data),
+        .dbg_reg_addr   (dbg_reg_addr[4:0]),
+        .dbg_reg_data   (dbg_reg_data),
+        .dbg_dmem_addr  (dbg_dmem_addr[DMEM_ADDR_W-3:0]),
+        .dbg_dmem_data  (dbg_dmem_data),
         .dmem_max_addr  (dmem_max_addr),
         .pc             (pc),
-        .dbg_latch_sel  (lat_idx[4:0]),
-        .dbg_latch_data (lat_dbg_data)
+        .dbg_latch_sel  (dbg_latch_sel[4:0]),
+        .dbg_latch_data (dbg_latch_data)
     );
 
     // ---------------- Mux del dump ----------------
@@ -163,11 +142,11 @@ module top #(
         else if (dump_idx == 1)
             dump_data = {18'd0, mem_words};
         else if (dump_idx < REG_BASE)
-            dump_data = lat_dbg_data;
+            dump_data = dbg_latch_data;
         else if (dump_idx < MEM_BASE)
-            dump_data = reg_dbg_data;
+            dump_data = dbg_reg_data;
         else
-            dump_data = mem_dbg_data;
+            dump_data = dbg_dmem_data;
     end
 
 endmodule

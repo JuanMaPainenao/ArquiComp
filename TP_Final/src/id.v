@@ -8,9 +8,9 @@ module id_stage(
     input  wire en, 
     
     // WB inputs
-    input wire wb_we,
+    input wire wb_reg_write,
     input wire [4:0] wb_rd,
-    input wire [31:0] wb_data,
+    input wire [31:0] wb_write_data,
 
     // Decoding
     input wire [31:0] instr,
@@ -59,8 +59,8 @@ module id_stage(
         .rs2_data(rs2_data),
 
         .rd(wb_rd),
-        .we(wb_we),
-        .rd_data(wb_data),
+        .reg_write(wb_reg_write),
+        .write_data(wb_write_data),
 
         .dbg_addr(dbg_reg_addr),
         .dbg_data(dbg_reg_data)

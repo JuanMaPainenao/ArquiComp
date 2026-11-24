@@ -1,17 +1,6 @@
 `timescale 1ns/1ps
-// ============================================================================
-// clk_gen.v - Clock del sistema con el MMCM del Artix-7 (lo mismo que genera
-// el Clocking Wizard, instanciado como primitiva para no depender de un IP).
-//
-// 100 MHz (placa) -> VCO = 100 * MULT / DIVCLK -> clk_out = VCO / OUT_DIV
-// Default: 100 * 8 / 1 = 800 MHz -> 800 / 10 = 80 MHz.
-//
-// Por que: con el pipeline completo a 100 MHz el ruteo da WNS = -0.498 ns
-// (el camino critico necesita ~10.5 ns). A 80 MHz (12.5 ns) sobra margen.
-// El VCO tiene que quedar entre 600 y 1200 MHz (xc7a35t -1).
-//
-// locked = 0 mientras el MMCM no engancho: el top mantiene todo en reset.
-// ============================================================================
+// clk_gen.v - MMCM que pasa los 100 MHz de la placa a 80 MHz (100 * 8 / 10).
+// Mientras locked = 0 el top mantiene todo en reset. Ver docs/timing.md.
 module clk_gen #(
     parameter real MULT    = 8.0,
     parameter real OUT_DIV = 10.0

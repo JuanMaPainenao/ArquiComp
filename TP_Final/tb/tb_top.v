@@ -1,16 +1,6 @@
 `timescale 1ns / 1ps
-// ============================================================================
-// tb_top.v - Testbench autoverificante de top (Debug Unit + cpu por UART)
-//
-// Hace de "PC": manda comandos por i_rx y decodifica las respuestas de o_tx.
-//   1. 'L' con 4 instrucciones          -> espera 'K'
-//   2. 'D'                              -> PC = 0, instr = prog[0]
-//   3. 'S'                              -> PC = 4, instr = prog[1]
-//   4. 'R'                              -> halted, PC = 20, x1..x4
-//   5. 'L' con 1 instruccion (reprog.)  -> 'K', y 'D' muestra PC = 0
-//   6. comando invalido                 -> '?'
-//   7. 'P' 4                            -> lee imem: prog nuevo + restos viejos
-// ============================================================================
+// tb_top.v - Hace de PC por UART: carga, dump, paso, continuo, reprogramacion,
+// comando invalido y lectura de imem. Se simula en Vivado (usa el MMCM).
 module tb_top;
 
     // clk del tb = 100 MHz (placa). El DUT corre a 80 MHz (MMCM) con un tick

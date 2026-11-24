@@ -16,8 +16,8 @@ module ex #(
     input  wire               jalr,
 
     // Forwarding
-    input  wire [NB_DATA-1:0] ex_mem_result,
-    input  wire [NB_DATA-1:0] mem_wb_data,
+    input  wire [NB_DATA-1:0] exmem_alu_result,
+    input  wire [NB_DATA-1:0] wb_write_data,
     input  wire [1:0]         fwd_a,
     input  wire [1:0]         fwd_b,
 
@@ -27,8 +27,7 @@ module ex #(
 
     // Saltos
     output wire               redirect,
-    output reg  [NB_DATA-1:0] redirect_target,
-    output wire               flush
+    output reg  [NB_DATA-1:0] redirect_target
 );
 
     localparam F3_BEQ  = 3'b000;
@@ -47,10 +46,10 @@ module ex #(
     always @(*) begin
         case (fwd_a)
             FWD_MEM: begin
-                A = ex_mem_result;
+                A = exmem_alu_result;
             end
             FWD_WB: begin
-                A = mem_wb_data;
+                A = wb_write_data;
             end
             default: begin
                 A = rs1_data;
@@ -61,10 +60,10 @@ module ex #(
     always @(*) begin
         case (fwd_b)
             FWD_MEM: begin
-                B_ = ex_mem_result;
+                B_ = exmem_alu_result;
             end
             FWD_WB: begin
-                B_ = mem_wb_data;
+                B_ = wb_write_data;
             end
             default: begin
                 B_ = rs2_data;
@@ -87,8 +86,8 @@ module ex #(
     ) u_alu (
         .A   (A),
         .B   (B),
-        .OP  (alu_ctrl),
-        .RES (alu_result)
+        .alu_ctrl   (alu_ctrl),
+        .alu_result (alu_result)
     );
 
     // 4. Decision de salto
@@ -113,7 +112,6 @@ module ex #(
     end
 
     assign redirect = taken;
-    assign flush    = taken;
 
     // 6. Salidas hacia EX/MEM
     assign store_data = B_;
